@@ -1,0 +1,72 @@
+version: '3.8'
+
+services:
+  backend:
+    build: ./backend
+    # ports removed for security, access via Traefik only
+    volumes:
+      - ./backend:/app
+    environment:
+      - DATABASE_URL=postgresql://user:password@db:5432/judo_db
+    depends_on:
+      - db
+    networks:
+      - default
+      - traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.judo_backend.rule=Host(`judo-pesee.montlebon.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.judo_backend.entrypoints=websecure"
+      - "traefik.http.routers.judo_backend.tls.certresolver=myresolver"
+      - "traefik.http.routers.judo_backend.service=judo_backend_svc"
+      - "traefik.http.services.judo_backend_svc.loadbalancer.server.port=8000"
+      - "traefik.http.middlewares.api-strip.stripprefix.prefixes=/api"
+      # Security: Basic Auth
+      - "traefik.http.middlewares.judo-auth.basicauth.users=admin:$$apr1$$RMXMwoIi$$aV7ACtlAnUQndVovG6dNG1"
+      - "traefik.http.routers.judo_backend.middlewares=judo-auth,api-strip"
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    # ports removed for security, access via Traefik only
+    volumes:
+      - ./frontend:/app
+      - /app/node_modules
+    environment:
+      - NEXT_PUBLIC_API_URL=/api
+    depends_on:
+      - backend
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.judo_frontend.rule=Host(`judo-pesee.montlebon.com`)"
+      - "traefik.http.routers.judo_frontend.entrypoints=websecure"
+      - "traefik.http.routers.judo_frontend.tls.certresolver=myresolver"
+      - "traefik.http.routers.judo_frontend.service=judo_frontend_svc"
+      - "traefik.http.services.judo_frontend_svc.loadbalancer.server.port=3000"
+      # Security: Basic Auth
+      - "traefik.http.routers.judo_frontend.middlewares=judo-auth"
+    networks:
+      - traefik-network
+
+  db:
+    image: postgres:15
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+    environment:
+      - POSTGRES_USER=user
+      - POSTGRES_PASSWORD=password
+      - POSTGRES_DB=judo_db
+    ports:
+      - "127.0.0.1:5433:5432" # Only accessible from localhost (use SSH tunnel for remote access)
+    networks:
+      - traefik-network
+
+volumes:
+  postgres_data:
+
+networks:
+  traefik-network:
+    external: true
