@@ -51,7 +51,75 @@ def get_participants(category: Optional[str] = None, db: Session = Depends(get_d
     query = db.query(models.Participant)
     if category:
         query = query.filter(models.Participant.category == category)
-    return query.all()
+    participants = query.all()
+    
+    # Calculate scores from fights
+    # Fetch all fights (optimize by filtering category if provided)
+    fight_query = db.query(models.Fight)
+    if category:
+        fight_query = fight_query.filter(models.Fight.category == category)
+    fights = fight_query.all()
+    
+    # Map id -> {score, victories}
+    stats = {p.id: {"score": 0, "victories": 0} for p in participants}
+    
+    for f in fights:
+        if f.fighter1_id in stats:
+            stats[f.fighter1_id]["score"] += f.score1
+            if f.winner_id == f.fighter1_id:
+                stats[f.fighter1_id]["victories"] += 1
+        
+        if f.fighter2_id in stats:
+            stats[f.fighter2_id]["score"] += f.score2
+            if f.winner_id == f.fighter2_id:
+                stats[f.fighter2_id]["victories"] += 1
+                
+    # Attach to participant objects (transiently)
+    for p in participants:
+        p.score = stats[p.id]["score"]
+        p.victories = stats[p.id]["victories"]
+        
+    return participants
+
+# Fights Endpoints
+@app.get("/fights", response_model=List[schemas.Fight])
+def get_fights(category: Optional[str] = None, pool_number: Optional[int] = None, db: Session = Depends(get_db)):
+    query = db.query(models.Fight)
+    if category:
+        query = query.filter(models.Fight.category == category)
+    if pool_number:
+        query = query.filter(models.Fight.pool_number == pool_number)
+    return query.order_by(models.Fight.order).all()
+
+@app.post("/fights", response_model=List[schemas.Fight])
+def create_fights(fights: List[schemas.FightCreate], db: Session = Depends(get_db)):
+    # Batch create
+    new_fights = []
+    for f in fights:
+        # Check duplicate? Or just insert.
+        # Assuming frontend manages uniqueness or clears first.
+        # Let's check if fight exists for this pair in this pool?
+        # Simpler: just insert. Frontend logic "init pool" should handle "if not exists".
+        db_fight = models.Fight(**f.dict())
+        db.add(db_fight)
+        new_fights.append(db_fight)
+    db.commit()
+    for f in new_fights:
+        db.refresh(f)
+    return new_fights
+
+@app.put("/fights/{fight_id}", response_model=schemas.Fight)
+def update_fight(fight_id: int, fight_update: schemas.FightUpdate, db: Session = Depends(get_db)):
+    db_fight = db.query(models.Fight).filter(models.Fight.id == fight_id).first()
+    if not db_fight:
+        raise HTTPException(status_code=404, detail="Fight not found")
+    
+    for key, value in fight_update.dict(exclude_unset=True).items():
+        setattr(db_fight, key, value)
+    
+    db.commit()
+    db.refresh(db_fight)
+    return db_fight
 
 @app.post("/participants", response_model=schemas.Participant)
 def create_participant(participant: schemas.ParticipantCreate, db: Session = Depends(get_db)):

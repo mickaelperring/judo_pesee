@@ -9,6 +9,7 @@ export interface Participant {
   weight: number;
   pool_number?: number | null;
   score?: number | null;
+  victories?: number;
   hors_categorie?: boolean;
 }
 
@@ -20,7 +21,20 @@ export interface PoolAssignment {
   order: number;
 }
 
+export interface Fight {
+  id: number;
+  category: string;
+  pool_number: number;
+  order: number;
+  fighter1_id: number;
+  fighter2_id: number;
+  score1: number;
+  score2: number;
+  winner_id: number | null;
+}
+
 export type ParticipantCreate = Omit<Participant, 'id'>;
+export type FightCreate = Omit<Fight, 'id'>;
 
 export interface ClubStats {
   club: string;

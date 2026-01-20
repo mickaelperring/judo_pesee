@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Participant, ParticipantCreate, StatsResponse } from '@/types';
+import { Participant, ParticipantCreate, StatsResponse, PoolAssignment } from '@/types';
 
 const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
 
@@ -27,3 +27,9 @@ export const getConfig = (key: string) => api.get<{value: string | null}>(`/conf
 export const updateConfig = (key: string, value: string) => api.post('/configuration', { key, value }).then(res => res.data);
 export const getPoolAssignments = () => api.get<PoolAssignment[]>('/pool_assignments').then(res => res.data);
 export const updatePoolAssignments = (assignments: Omit<PoolAssignment, 'id'>[]) => api.post('/pool_assignments/batch', assignments).then(res => res.data);
+
+// Fights
+export const getFights = (category?: string, poolNumber?: number) => 
+  api.get<any[]>(`/fights?${category ? `category=${encodeURIComponent(category)}` : ''}${poolNumber ? `&pool_number=${poolNumber}` : ''}`).then(res => res.data);
+export const createFights = (fights: any[]) => api.post('/fights', fights).then(res => res.data);
+export const updateFight = (id: number, data: any) => api.put(`/fights/${id}`, data).then(res => res.data);

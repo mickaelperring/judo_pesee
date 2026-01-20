@@ -13,8 +13,21 @@ class Participant(Base):
     club = Column(String, index=True)
     weight = Column(Float)
     pool_number = Column(Integer, nullable=True)
-    score = Column(Integer, default=None, nullable=True)
+    # score/victories removed, calculated from fights
     hors_categorie = Column(Boolean, default=False)
+
+class Fight(Base):
+    __tablename__ = "fights"
+
+    id = Column(Integer, primary_key=True, index=True)
+    category = Column(String)
+    pool_number = Column(Integer)
+    order = Column(Integer)
+    fighter1_id = Column(Integer)
+    fighter2_id = Column(Integer)
+    score1 = Column(Integer, default=0)
+    score2 = Column(Integer, default=0)
+    winner_id = Column(Integer, nullable=True)
 
 class PoolAssignment(Base):
     __tablename__ = "pool_assignments"

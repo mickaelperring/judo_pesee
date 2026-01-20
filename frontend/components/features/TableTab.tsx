@@ -27,7 +27,8 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Wand2 } from "lucide-react"
+import { Wand2, ExternalLink } from "lucide-react"
+import Link from "next/link"
 
 // --- Components ---
 
@@ -85,13 +86,14 @@ function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardD
 
 function TableRow({ id, title, items, isUnassigned = false }: { id: string, title: string, items: PoolCardData[], isUnassigned?: boolean }) {
     const { setNodeRef } = useSortable({ id, disabled: true }) 
+    const tableId = id.replace("table-", "")
     
     return (
         <div className={cn(
             "flex flex-col md:flex-row items-start md:items-center gap-4 p-4 border rounded-lg transition-colors",
             isUnassigned ? "bg-muted/20 border-dashed border-2 min-h-[120px]" : "bg-card shadow-sm min-h-[100px]"
         )}>
-            <div className="w-32 shrink-0">
+            <div className="w-32 shrink-0 flex flex-col gap-2">
                 <div className={cn(
                     "font-bold text-sm uppercase tracking-wider flex items-center gap-2",
                     isUnassigned ? "text-muted-foreground" : "text-primary"
@@ -101,6 +103,13 @@ function TableRow({ id, title, items, isUnassigned = false }: { id: string, titl
                         {items.length}
                     </span>
                 </div>
+                {!isUnassigned && (
+                    <Button variant="outline" size="sm" className="w-full text-xs h-7" asChild>
+                        <Link href={`/table/${tableId}`}>
+                            <ExternalLink className="mr-2 h-3 w-3" /> Ouvrir
+                        </Link>
+                    </Button>
+                )}
             </div>
             
             <div ref={setNodeRef} className="flex-1 flex flex-wrap gap-2 w-full">
@@ -124,6 +133,7 @@ export default function TableTab() {
     const [columns, setColumns] = useState<Record<string, PoolCardData[]>>({})
     const [activeId, setActiveId] = useState<string | null>(null)
     const [activeData, setActiveData] = useState<PoolCardData | null>(null)
+    const [startContainerId, setStartContainerId] = useState<string | null>(null)
     
     // Category Management
     const [activeCategories, setActiveCategories] = useState<string[]>([])
@@ -230,6 +240,9 @@ export default function TableTab() {
     const handleDragStart = (event: DragStartEvent) => {
         const { active } = event
         setActiveId(active.id as string)
+        const startContainer = findContainer(active.id as string)
+        if (startContainer) setStartContainerId(startContainer)
+
         for (const col of Object.values(columns)) {
             const found = col.find(i => i.uniqueId === active.id)
             if (found) setActiveData(found)
@@ -323,12 +336,15 @@ export default function TableTab() {
             const overIndex = columns[overContainer].findIndex((i) => i.uniqueId === overId)
 
             const newColumns = { ...columns }
+            const containerChanged = startContainerId !== activeContainer
 
             if (activeContainer === overContainer) {
                 if (activeIndex !== overIndex) {
                      newColumns[activeContainer] = arrayMove(newColumns[activeContainer], activeIndex, overIndex)
                      setColumns(newColumns)
                      saveAll(newColumns)
+                } else if (containerChanged) {
+                    saveAll(newColumns)
                 }
             } else {
                 saveAll(columns)
@@ -337,6 +353,7 @@ export default function TableTab() {
         
         setActiveId(null)
         setActiveData(null)
+        setStartContainerId(null)
     }
 
     const handleAutoDistribute = () => {

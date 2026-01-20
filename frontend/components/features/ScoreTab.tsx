@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { getParticipants, updateParticipant } from "@/lib/api"
+import { getParticipants } from "@/lib/api"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
@@ -38,19 +38,6 @@ export default function ScoreTab({ category }: ScoreTabProps) {
     if (category) loadData()
   }, [category, loadData])
 
-  const handleScoreChange = async (id: number, score: string) => {
-     const val = parseInt(score)
-     if (isNaN(val)) return 
-     if (val < 0 || val > 50) return toast.error("Score entre 0 et 50")
-     
-     try {
-         await updateParticipant(id, { score: val })
-         toast.success("Score enregistré")
-     } catch {
-         toast.error("Erreur sauvegarde")
-     }
-  }
-
   if (!category) return <div className="p-8 text-center">Sélectionnez une catégorie</div>
 
   return (
@@ -73,16 +60,20 @@ export default function ScoreTab({ category }: ScoreTabProps) {
                                  <div className="text-xs text-muted-foreground font-normal">{p.club}</div>
                              </div>
                              <Badge variant="outline">{p.weight} kg</Badge>
-                             <div className="flex items-center gap-2">
-                                 <span className="text-sm">Score:</span>
-                                 <Input 
-                                    className="w-20" 
-                                    type="number" 
-                                    min="0" 
-                                    max="50" 
-                                    defaultValue={p.score ?? ""}
-                                    onBlur={(e) => handleScoreChange(p.id, e.target.value)}
-                                 />
+                             
+                             <div className="flex items-center gap-3">
+                                 <div className="flex flex-col items-center gap-1">
+                                     <span className="text-[10px] text-muted-foreground uppercase font-bold">Vict.</span>
+                                     <div className="w-16 text-center py-2 bg-muted rounded font-mono font-bold">
+                                         {p.victories ?? 0}
+                                     </div>
+                                 </div>
+                                 <div className="flex flex-col items-center gap-1">
+                                     <span className="text-[10px] text-muted-foreground uppercase font-bold">Pts</span>
+                                     <div className="w-16 text-center py-2 bg-muted rounded font-mono font-bold">
+                                         {p.score ?? 0}
+                                     </div>
+                                 </div>
                              </div>
                         </div>
                     ))}

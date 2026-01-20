@@ -10,7 +10,6 @@ class ParticipantBase(BaseModel):
     club: str
     weight: float
     pool_number: Optional[int] = None
-    score: Optional[int] = None
     hors_categorie: bool = False
 
 class ParticipantCreate(ParticipantBase):
@@ -25,10 +24,35 @@ class ParticipantUpdate(BaseModel):
     club: Optional[str] = None
     weight: Optional[float] = None
     pool_number: Optional[int] = None
-    score: Optional[int] = None
     hors_categorie: Optional[bool] = None
 
 class Participant(ParticipantBase):
+    id: int
+    score: int = 0
+    victories: int = 0
+
+    class Config:
+        orm_mode = True
+
+class FightBase(BaseModel):
+    category: str
+    pool_number: int
+    order: int
+    fighter1_id: int
+    fighter2_id: int
+    score1: int = 0
+    score2: int = 0
+    winner_id: Optional[int] = None
+
+class FightCreate(FightBase):
+    pass
+
+class FightUpdate(BaseModel):
+    score1: Optional[int] = None
+    score2: Optional[int] = None
+    winner_id: Optional[int] = None
+
+class Fight(FightBase):
     id: int
 
     class Config:

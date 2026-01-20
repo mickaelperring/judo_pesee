@@ -1,8 +1,7 @@
 "use client"
 
 import { useState, useEffect, use, useCallback } from "react"
-import { getParticipants, updateParticipant } from "@/lib/api"
-import { Input } from "@/components/ui/input"
+import { getParticipants } from "@/lib/api"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
@@ -39,24 +38,6 @@ export default function PoolScorePage({ params }: { params: Promise<{ category: 
     loadData()
   }, [loadData])
 
-  const handleScoreChange = async (id: number, score: string) => {
-     const val = parseInt(score)
-     if (isNaN(val) && score !== "") return 
-     if (val < 0 || val > 50) return toast.error("Score entre 0 et 50")
-     
-     // Allow empty string to clear? Logic says default=None.
-     // If empty string, maybe don't update or set null?
-     // For now assume valid int.
-     if (score === "") return 
-
-     try {
-         await updateParticipant(id, { score: val })
-         toast.success("Score enregistré")
-     } catch {
-         toast.error("Erreur sauvegarde")
-     }
-  }
-
   return (
     <div className="container mx-auto p-4 max-w-2xl">
       <div className="mb-6 flex items-center gap-4">
@@ -66,7 +47,7 @@ export default function PoolScorePage({ params }: { params: Promise<{ category: 
             </Button>
         </Link>
         <div>
-            <h1 className="text-2xl font-bold">Saisie des Scores</h1>
+            <h1 className="text-2xl font-bold">Résultats</h1>
             <p className="text-muted-foreground">{decodedCategory} - Poule {poolNumber}</p>
         </div>
       </div>
@@ -97,16 +78,15 @@ export default function PoolScorePage({ params }: { params: Promise<{ category: 
                                 {p.weight} kg
                             </Badge>
 
-                            <div className="flex items-center gap-2">
-                                <Label className="sr-only">Score</Label>
-                                <Input 
-                                className="w-24 text-center text-lg h-12" 
-                                type="number" 
-                                min="0" 
-                                max="50" 
-                                defaultValue={p.score ?? ""}
-                                onBlur={(e) => handleScoreChange(p.id, e.target.value)}
-                                />
+                            <div className="flex items-center gap-4">
+                                <div className="flex flex-col items-center gap-1">
+                                    <span className="text-xs text-muted-foreground uppercase font-bold">Vict.</span>
+                                    <span className="text-xl font-mono font-bold">{p.victories ?? 0}</span>
+                                </div>
+                                <div className="flex flex-col items-center gap-1">
+                                    <span className="text-xs text-muted-foreground uppercase font-bold">Pts</span>
+                                    <span className="text-xl font-mono font-bold">{p.score ?? 0}</span>
+                                </div>
                             </div>
                     </div>
                 ))

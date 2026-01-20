@@ -2,6 +2,7 @@
 
 import { useState, useEffect, useRef } from "react"
 import { Input } from "@/components/ui/input"
+import { NumberInput } from "@/components/ui/number-input"
 import { Label } from "@/components/ui/label"
 import { getConfig, updateConfig, getCategories } from "@/lib/api"
 import { toast } from "sonner"
@@ -72,13 +73,12 @@ export default function AdminTab() {
             <CardContent className="space-y-6">
                 <div className="space-y-2">
                     <Label htmlFor="tables">Nombre de Tables (Tatamis)</Label>
-                    <Input 
+                    <NumberInput 
                         id="tables" 
-                        type="number" 
                         min="1" 
                         max="20"
                         value={tableCount} 
-                        onChange={(e) => setTableCount(e.target.value)} 
+                        onChange={setTableCount} 
                     />
                     <p className="text-sm text-muted-foreground">
                         Définit le nombre de colonnes dans l&apos;onglet &quot;Tables&quot;.
