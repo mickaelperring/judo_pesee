@@ -28,6 +28,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
+import { Progress } from "@/components/ui/progress"
 import { Wand2, ExternalLink, GripVertical, CheckCircle2, PlayCircle, Trophy } from "lucide-react"
 import Link from "next/link"
 
@@ -41,6 +42,8 @@ interface PoolCardData {
     label: string
     participants: string[]
     status: "not_started" | "in_progress" | "finished" | "validated"
+    playedCount: number
+    totalFights: number
 }
 
 function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardData, isOverlay?: boolean }) {
@@ -90,6 +93,12 @@ function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardD
                 ))}
                 {data.participants.length > 4 && <div className="text-[9px] italic">...</div>}
             </div>
+            {data.status === "in_progress" && data.totalFights > 0 && (
+                <div className="mt-1">
+                    <Progress value={(data.playedCount / data.totalFights) * 100} className="h-1" />
+                    <div className="text-[9px] text-right text-muted-foreground mt-0.5">{data.playedCount}/{data.totalFights}</div>
+                </div>
+            )}
         </div>
     )
 
@@ -226,7 +235,9 @@ export default function TableTab() {
                         participantCount: 0,
                         label: `${p.category} - P${p.pool_number}`,
                         participants: [],
-                        status: "not_started"
+                        status: "not_started",
+                        playedCount: 0,
+                        totalFights: 0
                     }
                 }
                 poolsMap[key].participantCount++
@@ -234,6 +245,16 @@ export default function TableTab() {
             })
 
             // 2. Determine status for each pool
+            // Optimize: Create a set of played pairings for O(1) lookup
+            const playedPairings = new Set<string>()
+            allFights.forEach(f => {
+                if (f.winner_id !== null) {
+                    const p1 = Math.min(f.fighter1_id, f.fighter2_id)
+                    const p2 = Math.max(f.fighter1_id, f.fighter2_id)
+                    playedPairings.add(`${p1}-${p2}`)
+                }
+            })
+
             Object.keys(poolsMap).forEach(key => {
                 const pool = poolsMap[key]
                 const assignment = allAssignments.find(a => a.category === pool.category && a.pool_number === pool.poolNumber)
@@ -251,15 +272,20 @@ export default function TableTab() {
                         
                         let playedCount = 0
                         pairings.forEach(pair => {
-                            const p1 = sortedP[pair[0]-1]
-                            const p2 = sortedP[pair[1]-1]
-                            const fight = allFights.find(f => 
-                                f.winner_id !== null &&
-                                ((f.fighter1_id === p1.id && f.fighter2_id === p2.id) || 
-                                 (f.fighter1_id === p2.id && f.fighter2_id === p1.id))
-                            )
-                            if (fight) playedCount++
+                            const p1Obj = sortedP[pair[0]-1]
+                            const p2Obj = sortedP[pair[1]-1]
+                            if (!p1Obj || !p2Obj) return
+
+                            const id1 = Math.min(p1Obj.id, p2Obj.id)
+                            const id2 = Math.max(p1Obj.id, p2Obj.id)
+                            
+                            if (playedPairings.has(`${id1}-${id2}`)) {
+                                playedCount++
+                            }
                         })
+
+                        pool.playedCount = playedCount
+                        pool.totalFights = pairings.length
 
                         if (playedCount === 0) pool.status = "not_started"
                         else if (playedCount === pairings.length) pool.status = "finished"

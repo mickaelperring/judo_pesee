@@ -46,6 +46,24 @@ def get_preregistrations():
         print(e)
         return []
 
+def calculate_stats(participants, fights):
+    stats = {p.id: {"score": 0, "victories": 0, "has_fights": False} for p in participants}
+    for f in fights:
+        is_played = f.winner_id is not None
+        if f.fighter1_id in stats:
+            stats[f.fighter1_id]["score"] += f.score1
+            if f.winner_id == f.fighter1_id:
+                stats[f.fighter1_id]["victories"] += 1
+            if is_played:
+                stats[f.fighter1_id]["has_fights"] = True
+        if f.fighter2_id in stats:
+            stats[f.fighter2_id]["score"] += f.score2
+            if f.winner_id == f.fighter2_id:
+                stats[f.fighter2_id]["victories"] += 1
+            if is_played:
+                stats[f.fighter2_id]["has_fights"] = True
+    return stats
+
 @app.get("/participants", response_model=List[schemas.Participant])
 def get_participants(category: Optional[str] = None, db: Session = Depends(get_db)):
     query = db.query(models.Participant)
@@ -53,34 +71,13 @@ def get_participants(category: Optional[str] = None, db: Session = Depends(get_d
         query = query.filter(models.Participant.category == category)
     participants = query.all()
     
-    # Calculate scores from fights
-    # Fetch all fights (optimize by filtering category if provided)
     fight_query = db.query(models.Fight)
     if category:
         fight_query = fight_query.filter(models.Fight.category == category)
     fights = fight_query.all()
     
-    # Map id -> {score, victories, has_fights}
-    stats = {p.id: {"score": 0, "victories": 0, "has_fights": False} for p in participants}
-    
-    for f in fights:
-        is_played = f.winner_id is not None
-
-        if f.fighter1_id in stats:
-            stats[f.fighter1_id]["score"] += f.score1
-            if f.winner_id == f.fighter1_id:
-                stats[f.fighter1_id]["victories"] += 1
-            if is_played:
-                stats[f.fighter1_id]["has_fights"] = True
-        
-        if f.fighter2_id in stats:
-            stats[f.fighter2_id]["score"] += f.score2
-            if f.winner_id == f.fighter2_id:
-                stats[f.fighter2_id]["victories"] += 1
-            if is_played:
-                stats[f.fighter2_id]["has_fights"] = True
+    stats = calculate_stats(participants, fights)
                 
-    # Attach to participant objects (transiently)
     for p in participants:
         p.score = stats[p.id]["score"]
         p.victories = stats[p.id]["victories"]
@@ -381,16 +378,22 @@ def download_score_sheet(category: str, base_url: Optional[str] = None, db: Sess
 
 @app.get("/stats")
 def get_stats(db: Session = Depends(get_db)):
-    # Total scores and count by club
-    # Using pandas for quick grouping if list is small, or SQL group by
     participants = db.query(models.Participant).all()
     if not participants:
-        return []
+        return {"by_club": [], "warnings": []}
+    
+    fights = db.query(models.Fight).all()
+    stats_map = calculate_stats(participants, fights)
+    
+    # Enrich participants
+    for p in participants:
+        p.score = stats_map[p.id]["score"]
+        # p.victories etc if needed
     
     data = [{
         "club": p.club, 
-        "score": p.score if p.score is not None else 0,
-        "has_score": p.score is not None
+        "score": p.score,
+        "has_score": p.score > 0 or stats_map[p.id]["has_fights"] # Logic: has participated
     } for p in participants]
     
     df = pd.DataFrame(data)
@@ -399,11 +402,17 @@ def get_stats(db: Session = Depends(get_db)):
         count=('club', 'count')
     ).reset_index().to_dict(orient='records')
     
-    missing_scores = df[~df['has_score']].to_dict(orient='records') # Simplified
+    # Warning for participants with 0 score (and maybe no fights?)
+    # Frontend says "Ces participants n'ont pas encore de score enregistré."
+    # If they have 0 points but played, is that a warning? Maybe not.
+    # But usually 0 points means not played or lost everything.
+    # Let's keep logic simple: score is None? But score is 0 by default now.
+    
+    warnings = [p for p in participants if p.score == 0 and not stats_map[p.id]["has_fights"]]
     
     return {
         "by_club": stats,
-        "warnings": [p for p in participants if p.score is None]
+        "warnings": warnings
     }
 
 # Configuration
