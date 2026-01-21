@@ -94,9 +94,14 @@ def get_fights(category: Optional[str] = None, pool_number: Optional[int] = None
     query = db.query(models.Fight)
     if category:
         query = query.filter(models.Fight.category == category)
-    if pool_number:
-        query = query.filter(models.Fight.pool_number == pool_number)
-    return query.order_by(models.Fight.order).all()
+    if pool_number is not None:
+        # Join with Participant to filter by pool_number
+        # We check fighter1's pool number (assuming both are in same pool)
+        query = query.join(models.Participant, models.Fight.fighter1_id == models.Participant.id)\
+                     .filter(models.Participant.pool_number == pool_number)
+    
+    # Order by ID which is creation order
+    return query.order_by(models.Fight.id).all()
 
 @app.post("/fights", response_model=List[schemas.Fight])
 def create_fights(fights: List[schemas.FightCreate], db: Session = Depends(get_db)):
@@ -127,19 +132,6 @@ def update_fight(fight_id: int, fight_update: schemas.FightUpdate, db: Session =
     db.commit()
     db.refresh(db_fight)
     return db_fight
-
-@app.post("/fights/validate_pool")
-def validate_pool(validation: schemas.PoolValidation, db: Session = Depends(get_db)):
-    fights = db.query(models.Fight).filter(
-        models.Fight.category == validation.category, 
-        models.Fight.pool_number == validation.pool_number
-    ).all()
-    
-    for f in fights:
-        f.validated = validation.validated
-        
-    db.commit()
-    return {"status": "ok"}
 
 @app.post("/participants", response_model=schemas.Participant)
 def create_participant(participant: schemas.ParticipantCreate, db: Session = Depends(get_db)):
@@ -178,6 +170,7 @@ def update_pools(updates: List[dict], db: Session = Depends(get_db)):
     # This is for drag and drop updates
     affected_keys = set() # (category, pool_number)
 
+    # First Pass: Identify affected pools and update participants
     for update in updates:
         p = db.query(models.Participant).filter(models.Participant.id == update['id']).first()
         if p:
@@ -189,12 +182,30 @@ def update_pools(updates: List[dict], db: Session = Depends(get_db)):
             # Mark new pool
             affected_keys.add((p.category, p.pool_number))
             
-    # Delete fights for affected pools because composition changed
+    # Second Pass: Delete fights for affected pools
+    # Because composition changed, existing fights are invalid or need regeneration
+    # We find fights where either fighter is in the affected pool?
+    # Actually, simpler: for each affected pool, find fights where fighter1 is in that pool.
+    # But wait, we just updated the participants! So if we query now, we get the NEW composition.
+    # What about the OLD composition?
+    # If a participant moved FROM pool A TO pool B.
+    # Pool A has lost a fighter. Pool B has gained a fighter.
+    # We should reset fights for BOTH pools.
+    
+    # Logic: Delete all fights where fighter1 belongs to an affected pool.
+    # (assuming fighter2 is in same pool)
+    
+    # We can iterate over affected keys
     for (cat, pool_num) in affected_keys:
-        db.query(models.Fight).filter(
-            models.Fight.category == cat, 
-            models.Fight.pool_number == pool_num
-        ).delete()
+        # Find fights via join
+        fights_to_delete = db.query(models.Fight).join(models.Participant, models.Fight.fighter1_id == models.Participant.id)\
+            .filter(
+                models.Fight.category == cat, 
+                models.Participant.pool_number == pool_num
+            ).all()
+        
+        for f in fights_to_delete:
+            db.delete(f)
 
     db.commit()
     return {"status": "ok"}

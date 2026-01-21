@@ -24,10 +24,11 @@ import { restrictToVerticalAxis } from "@dnd-kit/modifiers"
 
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
+import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert"
 import { Progress } from "@/components/ui/progress"
-import { getParticipants, updatePools, generatePools, getScoreSheetUrl, updateParticipant } from "@/lib/api"
+import { getParticipants, updatePools, generatePools, getScoreSheetUrl, updateParticipant, getConfig } from "@/lib/api"
 import { toast } from "sonner"
-import { GripVertical, Plus, FileDown, RefreshCw, Edit } from "lucide-react"
+import { GripVertical, Plus, FileDown, RefreshCw, Edit, TriangleAlert } from "lucide-react"
 import { cn } from "@/lib/utils"
 import Link from "next/link"
 import { Participant } from "@/types"
@@ -141,6 +142,7 @@ export default function PouleTab({ category }: PouleTabProps) {
   const [loading, setLoading] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
   const [baseUrl, setBaseUrl] = useState<string>("")
+  const [activeCategories, setActiveCategories] = useState<string[]>([])
 
   const sensors = useSensors(
     useSensor(PointerSensor),
@@ -213,6 +215,10 @@ export default function PouleTab({ category }: PouleTabProps) {
     if (typeof window !== "undefined") {
         setBaseUrl(window.location.origin)
     }
+    // Load config
+    getConfig("active_categories").then(c => {
+        if (c.value) setActiveCategories(c.value.split(","))
+    })
   }, [category, loadData])
 
   const { minWeight, maxWeight } = useMemo(() => {
@@ -355,6 +361,16 @@ export default function PouleTab({ category }: PouleTabProps) {
 
   return (
     <div className="py-4 space-y-4">
+       {activeCategories.includes(category) && (
+           <Alert variant="destructive" className="bg-orange-100 border-orange-200 text-orange-800 dark:bg-orange-900/30 dark:border-orange-800 dark:text-orange-300">
+               <TriangleAlert className="h-4 w-4 text-orange-600 dark:text-orange-400" />
+               <AlertTitle>Attention</AlertTitle>
+               <AlertDescription>
+                   Cette catégorie est active (En Cours). Modifier les poules peut impacter les matchs en cours.
+               </AlertDescription>
+           </Alert>
+       )}
+
        <div className="flex justify-between items-center bg-card p-4 rounded-lg border">
            <div className="flex gap-2">
                <Button onClick={handleGenerate} disabled={loading}>

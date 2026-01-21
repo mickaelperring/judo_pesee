@@ -15,7 +15,6 @@ interface ScoreTabProps {
 
 export default function ScoreTab({ category }: ScoreTabProps) {
   const [pools, setPools] = useState<Record<number, Participant[]>>({})
-  const [validatedPools, setValidatedPools] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(false)
 
   const loadData = useCallback(async () => {
@@ -35,10 +34,13 @@ export default function ScoreTab({ category }: ScoreTabProps) {
       setPools(grouped)
 
       const valPools = new Set<number>()
-      fightsData.forEach((f: Fight) => {
-          if (f.validated) valPools.add(f.pool_number)
+      // Create a map of participant ID to pool number
+      const pidToPool: Record<number, number> = {}
+      data.forEach(p => {
+          if (p.pool_number) pidToPool[p.id] = p.pool_number
       })
-      setValidatedPools(valPools)
+
+      // validated logic removed
 
     } catch {
       toast.error("Erreur de chargement")
@@ -57,7 +59,7 @@ export default function ScoreTab({ category }: ScoreTabProps) {
     <div className="py-4 space-y-6">
         {loading && <div className="text-center">Chargement...</div>}
         {Object.entries(pools).sort((a,b) => parseInt(a[0]) - parseInt(b[0])).map(([poolNum, participants]) => (
-            <Card key={poolNum} className={cn(validatedPools.has(parseInt(poolNum)) && "border-green-500 border-2 bg-green-50/20")}>
+            <Card key={poolNum}>
                 <CardHeader>
                     <CardTitle className="flex justify-between items-center">
                         <span>Poule {poolNum === "0" ? "Non assignée" : poolNum}</span>

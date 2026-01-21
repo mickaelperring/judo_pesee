@@ -25,14 +25,11 @@ export interface PoolAssignment {
 export interface Fight {
   id: number;
   category: string;
-  pool_number: number;
-  order: number;
   fighter1_id: number;
   fighter2_id: number;
   score1: number;
   score2: number;
   winner_id: number | null;
-  validated?: boolean;
 }
 
 export type ParticipantCreate = Omit<Participant, 'id'>;

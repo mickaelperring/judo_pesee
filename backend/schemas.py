@@ -37,14 +37,11 @@ class Participant(ParticipantBase):
 
 class FightBase(BaseModel):
     category: str
-    pool_number: int
-    order: int
     fighter1_id: int
     fighter2_id: int
     score1: int = 0
     score2: int = 0
     winner_id: Optional[int] = None
-    validated: bool = False
 
 class FightCreate(FightBase):
     pass
@@ -53,7 +50,6 @@ class FightUpdate(BaseModel):
     score1: Optional[int] = None
     score2: Optional[int] = None
     winner_id: Optional[int] = None
-    validated: Optional[bool] = None
 
 class Fight(FightBase):
     id: int
@@ -79,8 +75,3 @@ class PoolAssignment(PoolAssignmentBase):
 class ConfigUpdate(BaseModel):
     key: str
     value: str
-
-class PoolValidation(BaseModel):
-    category: str
-    pool_number: int
-    validated: bool

@@ -1,45 +1,45 @@
 "use client"
 
-import { useState, useEffect, useCallback, useMemo } from "react"
-import { getParticipants, getPoolAssignments, getFights, createFights, updateFight, validatePool, getConfig } from "@/lib/api"
+import { useState, useEffect, useCallback } from "react"
+import { getParticipants, getPoolAssignments, getFights, createFights, updateFight, getConfig } from "@/lib/api"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog"
-import { Input } from "@/components/ui/input"
 import { NumberInput } from "@/components/ui/number-input"
-import { Label } from "@/components/ui/label"
-import { Separator } from "@/components/ui/separator"
 import { cn } from "@/lib/utils"
 import { getPairings } from "@/lib/pairings"
 import { Participant, Fight, PoolAssignment } from "@/types"
-import { Loader2, Trophy, ArrowLeft } from "lucide-react"
+import { Loader2, Trophy, ArrowLeft, Scale } from "lucide-react"
 import Link from "next/link"
 
 interface TableMatchViewProps {
     tableId: string
 }
 
+// Helper to sort participants for deterministic pairings
+const sortParticipantsForPairing = (participants: Participant[]) => {
+    // Sort by Weight (standard) to ensure deterministic order
+    return [...participants].sort((a, b) => a.weight - b.weight)
+}
+
 export default function TableMatchView({ tableId }: TableMatchViewProps) {
     const [loading, setLoading] = useState(true)
     const [pools, setPools] = useState<PoolAssignment[]>([])
     const [participants, setParticipants] = useState<Participant[]>([])
-    const [fights, setFights] = useState<Fight[]>([])
+    const [fights, setFights] = useState<(Fight & { computedOrder: number })[]>([])
     const [activePool, setActivePool] = useState<string | null>(null) // "cat-poolNum"
     const [selectedFight, setSelectedFight] = useState<Fight | null>(null)
     const [score1, setScore1] = useState(0)
     const [score2, setScore2] = useState(0)
-
-    // Derived: Active Categories
-    const [activeCategories, setActiveCategories] = useState<string[]>([])
+    const [manualWinner, setManualWinner] = useState<string>("0")
 
     const loadData = useCallback(async () => {
         try {
             // 1. Config
             const confActive = await getConfig("active_categories")
             const activeCats = confActive.value ? confActive.value.split(",") : []
-            setActiveCategories(activeCats)
 
             // 2. Assignments
             const allAssignments = await getPoolAssignments()
@@ -51,7 +51,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
             // 3. Participants (All for now, filtering is client side optimization)
             const allParticipants = await getParticipants()
             setParticipants(allParticipants)
-        } catch (e) {
+        } catch {
             toast.error("Erreur de chargement")
         } finally {
             setLoading(false)
@@ -66,43 +66,58 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     const loadActivePoolFights = async (category: string, poolNumber: number) => {
         const poolFights = await getFights(category, poolNumber)
         
-        // Check if generated
-        if (poolFights.length === 0) {
-            // Generate
-            const poolParticipants = participants.filter(p => p.category === category && p.pool_number === poolNumber)
-            // Sort by ID or weight or name? 
-            // "Chaque participant est numéroté dans sa poule (identifiant croissant)" -> implicitly sorted by ID usually or arbitrary 1..N
-            // Let's sort by Weight (standard) then ID?
-            // Actually, usually pools are ordered by weight.
-            poolParticipants.sort((a, b) => a.weight - b.weight)
+        // Compute active participants for this pool
+        const poolParticipants = participants.filter(p => p.category === category && p.pool_number === poolNumber)
+        
+        // Sort for pairing generation
+        const sortedPoolParticipants = sortParticipantsForPairing(poolParticipants)
+        const n = sortedPoolParticipants.length
+        const pairings = getPairings(n)
+        
+        // Map fights to pairings
+        const mappedFights = mapFightsToOrder(poolFights, pairings, sortedPoolParticipants, category)
+        setFights(mappedFights)
+    }
+
+    const mapFightsToOrder = (
+        existingFights: Fight[], 
+        pairings: number[][], 
+        sortedParticipants: Participant[],
+        category: string
+    ) => {
+        const result: (Fight & { computedOrder: number })[] = []
+        
+        // For each pairing, find the corresponding fight or create placeholder
+        pairings.forEach((pair, idx) => {
+            const p1 = sortedParticipants[pair[0] - 1]
+            const p2 = sortedParticipants[pair[1] - 1]
             
-            const n = poolParticipants.length
-            const pairings = getPairings(n)
-            
-            if (pairings.length > 0) {
-                const newFightsData = pairings.map((pair, idx) => {
-                    const p1 = poolParticipants[pair[0] - 1]
-                    const p2 = poolParticipants[pair[1] - 1]
-                    return {
-                        category,
-                        pool_number: poolNumber,
-                        order: idx + 1,
-                        fighter1_id: p1.id,
-                        fighter2_id: p2.id,
-                        score1: 0,
-                        score2: 0,
-                        winner_id: null
-                    }
-                })
-                
-                const created = await createFights(newFightsData)
-                setFights(created)
+            if (!p1 || !p2) return
+
+            // Find fight matching these two IDs
+            const fight = existingFights.find(f => 
+                (f.fighter1_id === p1.id && f.fighter2_id === p2.id) || 
+                (f.fighter1_id === p2.id && f.fighter2_id === p1.id)
+            )
+
+            if (fight) {
+                result.push({ ...fight, computedOrder: idx + 1 })
             } else {
-                setFights([])
+                // Placeholder
+                result.push({
+                    id: -1, // Indicates not saved
+                    category,
+                    fighter1_id: p1.id,
+                    fighter2_id: p2.id,
+                    score1: 0,
+                    score2: 0,
+                    winner_id: null,
+                    computedOrder: idx + 1
+                } as Fight & { computedOrder: number })
             }
-        } else {
-            setFights(poolFights)
-        }
+        })
+        
+        return result
     }
 
     const handlePoolClick = (p: PoolAssignment) => {
@@ -114,41 +129,53 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
             loadActivePoolFights(p.category, p.pool_number)
         }
     }
-// ...
+
     const handleFightClick = (f: Fight) => {
         setScore1(f.score1)
         setScore2(f.score2)
+        setManualWinner(f.winner_id === f.fighter1_id ? "1" : f.winner_id === f.fighter2_id ? "2" : "0")
         setSelectedFight(f)
     }
+
+    const getEffectiveWinner = () => {
+        if (score1 > score2) return "1"
+        if (score2 > score1) return "2"
+        if (score1 === 1 && score2 === 1) return manualWinner
+        return "0"
+    }
+
+    const effectiveWinner = getEffectiveWinner()
+    const isManualAllowed = score1 === 1 && score2 === 1
 
     const handleScoreSave = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!selectedFight) return
         
-        // Read form data (using refs or controlled? uncontrolled for simplicity in modal)
-        const form = e.target as HTMLFormElement
-        // s1 and s2 from state
-        
-        // Winner is radio or logic? 
-        // "pouvoir désigner la victoire".
-        // Often winner is highest score, BUT in Judo ippon wins regardless. 
-        // So explicit winner selection is best.
-        const winnerVal = (form.elements.namedItem("winner") as RadioNodeList).value
-        
-        const winnerId = winnerVal === "1" ? selectedFight.fighter1_id : winnerVal === "2" ? selectedFight.fighter2_id : null
+        const winnerId = effectiveWinner === "1" ? selectedFight.fighter1_id : 
+                         effectiveWinner === "2" ? selectedFight.fighter2_id : null
 
         try {
-            await updateFight(selectedFight.id, {
+            const fightData = {
                 score1: score1,
                 score2: score2,
-                winner_id: winnerId
-            })
+                winner_id: winnerId,
+                // Ensure we send required fields for creation
+                category: selectedFight.category,
+                fighter1_id: selectedFight.fighter1_id,
+                fighter2_id: selectedFight.fighter2_id
+            }
+
+            if (selectedFight.id === -1) {
+                // Create
+                await createFights([fightData])
+            } else {
+                // Update
+                await updateFight(selectedFight.id, fightData)
+            }
+            
             toast.success("Combat enregistré")
             setSelectedFight(null)
             
-            // Reload fights AND participants (for stats)
-            // Getting parts of key from activePool is tricky if not passed.
-            // But we know the active pool.
             if (activePool) {
                 const [cat, num] = activePool.split("-")
                 await loadActivePoolFights(cat, parseInt(num))
@@ -158,18 +185,6 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
             }
         } catch {
             toast.error("Erreur sauvegarde")
-        }
-    }
-
-    const handleValidatePool = async (category: string, poolNumber: number, validated: boolean) => {
-        if (!validated && !confirm("Voulez-vous vraiment dé-valider cette poule ?")) return
-        
-        try {
-            await validatePool(category, poolNumber, validated)
-            toast.success(validated ? "Poule validée" : "Poule dé-validée")
-            await loadActivePoolFights(category, poolNumber)
-        } catch {
-            toast.error("Erreur")
         }
     }
 
@@ -210,7 +225,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         <Badge variant="secondary">{poolParticipants.length} combattants</Badge>
                                     </div>
                                     <div className="text-xs text-muted-foreground">
-                                        {poolParticipants.map(p => p.lastname).join(", ")}
+                                        {poolParticipants.map(p => `${p.firstname} ${p.lastname}`).join(", ")}
                                     </div>
                                 </CardHeader>
                             </Card>
@@ -222,17 +237,25 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         const p1 = getParticipant(fight.fighter1_id)
                                         const p2 = getParticipant(fight.fighter2_id)
                                         if (!p1 || !p2) return null
-
-                                        const isDone = fight.winner_id !== null
+                                        
+                                        const isSaved = fight.id !== -1
+                                        const isDraw = isSaved && fight.winner_id === null
                                         
                                         return (
-                                            <Card key={fight.id} className="cursor-pointer hover:bg-accent" onClick={() => handleFightClick(fight)}>
+                                            <Card 
+                                                key={fight.id === -1 ? `temp-${fight.computedOrder}` : fight.id} 
+                                                className={cn(
+                                                    "cursor-pointer hover:bg-accent transition-colors",
+                                                    isSaved && "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                                                )} 
+                                                onClick={() => handleFightClick(fight)}
+                                            >
                                                 <CardContent className="p-3">
                                                     <div className="flex items-center justify-between gap-2 text-sm">
                                                         <div className="flex-1 text-right">
                                                             <div className={cn(
                                                                 "flex items-center justify-end gap-1 font-semibold", 
-                                                                fight.winner_id !== p1.id && "text-red-600"
+                                                                isSaved && fight.winner_id !== p1.id && !isDraw && "text-red-600"
                                                             )}>
                                                                 {fight.winner_id === p1.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
                                                                 <span className="truncate">{p1.lastname} {p1.firstname}</span>
@@ -241,9 +264,10 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                             <div className="text-[10px] text-muted-foreground">V: {p1.victories} - P: {p1.score}</div>
                                                         </div>
                                                         
-                                                        <div className="flex flex-col items-center px-2 bg-muted/30 rounded">
+                                                        <div className="flex flex-col items-center px-2 bg-muted/30 rounded min-w-[60px]">
+                                                            {isDraw && <Scale className="h-3 w-3 text-blue-500 mb-0.5" />}
                                                             <span className="font-mono font-bold text-lg">{fight.score1} - {fight.score2}</span>
-                                                            <span className="text-[10px] text-muted-foreground">Combat {fight.order}</span>
+                                                            <span className="text-[10px] text-muted-foreground">Combat {fight.computedOrder}</span>
                                                         </div>
 
                                                         <div className="flex-1 text-left">
@@ -262,8 +286,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                     
                                     <div className="flex justify-end pt-4 pb-2 pr-2 border-t mt-4">
                                         {(() => {
-                                            const isPoolFinished = fights.length > 0 && fights.every(f => f.winner_id !== null)
-                                            const isPoolValidated = fights.length > 0 && fights.every(f => f.validated)
+                                            const isPoolFinished = fights.length > 0 && fights.every(f => f.id !== -1)
                                             
                                             if (fights.length === 0) return null
 
@@ -275,24 +298,10 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                 )
                                             }
 
-                                            return isPoolValidated ? (
-                                                <Button 
-                                                    variant="default" 
-                                                    size="sm"
-                                                    className="bg-green-600 hover:bg-green-700"
-                                                    onClick={() => handleValidatePool(pool.category, pool.pool_number, false)}
-                                                >
-                                                    Poule Validée (Dé-valider)
-                                                </Button>
-                                            ) : (
-                                                <Button 
-                                                    variant="outline"
-                                                    size="sm"
-                                                    className="border-green-600 text-green-600 hover:bg-green-50"
-                                                    onClick={() => handleValidatePool(pool.category, pool.pool_number, true)}
-                                                >
-                                                    Valider la Poule
-                                                </Button>
+                                            return (
+                                                <Badge className="bg-green-600 text-white hover:bg-green-700">
+                                                    Poule Terminée
+                                                </Badge>
                                             )
                                         })()}
                                     </div>
@@ -325,8 +334,19 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         inputClassName="text-center font-mono text-lg"
                                         autoFocus
                                     />
-                                    <label className="flex flex-col items-center gap-1 cursor-pointer">
-                                        <input type="radio" name="winner" value="1" defaultChecked={selectedFight.winner_id === selectedFight.fighter1_id} className="h-4 w-4" />
+                                    <label className={cn(
+                                        "flex flex-col items-center gap-1 cursor-pointer transition-opacity",
+                                        !isManualAllowed && effectiveWinner !== "1" && "opacity-30 pointer-events-none"
+                                    )}>
+                                        <input 
+                                            type="radio" 
+                                            name="winner" 
+                                            value="1" 
+                                            checked={effectiveWinner === "1"} 
+                                            onChange={() => setManualWinner("1")}
+                                            disabled={!isManualAllowed}
+                                            className="h-4 w-4" 
+                                        />
                                         <span className="text-xs">Vainqueur</span>
                                     </label>
                                 </div>
@@ -345,16 +365,38 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         min={0} 
                                         inputClassName="text-center font-mono text-lg"
                                     />
-                                    <label className="flex flex-col items-center gap-1 cursor-pointer">
-                                        <input type="radio" name="winner" value="2" defaultChecked={selectedFight.winner_id === selectedFight.fighter2_id} className="h-4 w-4" />
+                                    <label className={cn(
+                                        "flex flex-col items-center gap-1 cursor-pointer transition-opacity",
+                                        !isManualAllowed && effectiveWinner !== "2" && "opacity-30 pointer-events-none"
+                                    )}>
+                                        <input 
+                                            type="radio" 
+                                            name="winner" 
+                                            value="2" 
+                                            checked={effectiveWinner === "2"} 
+                                            onChange={() => setManualWinner("2")}
+                                            disabled={!isManualAllowed}
+                                            className="h-4 w-4" 
+                                        />
                                         <span className="text-xs">Vainqueur</span>
                                     </label>
                                 </div>
                             </div>
 
                             <div className="flex justify-center">
-                                <label className="flex items-center gap-2 cursor-pointer text-sm text-muted-foreground">
-                                    <input type="radio" name="winner" value="0" defaultChecked={!selectedFight.winner_id} className="h-4 w-4" />
+                                <label className={cn(
+                                    "flex items-center gap-2 cursor-pointer text-sm text-muted-foreground transition-opacity",
+                                    !isManualAllowed && effectiveWinner !== "0" && "opacity-30 pointer-events-none"
+                                )}>
+                                    <input 
+                                        type="radio" 
+                                        name="winner" 
+                                        value="0" 
+                                        checked={effectiveWinner === "0"} 
+                                        onChange={() => setManualWinner("0")}
+                                        disabled={!isManualAllowed}
+                                        className="h-4 w-4" 
+                                    />
                                     Match nul / En cours
                                 </label>
                             </div>

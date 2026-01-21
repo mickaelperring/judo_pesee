@@ -190,7 +190,7 @@ export default function TableTab() {
                     }
                 }
                 poolsMap[key].participantCount++
-                poolsMap[key].participants.push(`${p.lastname} ${p.firstname}`)
+                poolsMap[key].participants.push(`${p.firstname} ${p.lastname}`)
             })
 
             const allAssignments = await getPoolAssignments()
