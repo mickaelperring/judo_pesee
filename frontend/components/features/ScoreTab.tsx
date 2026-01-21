@@ -1,12 +1,13 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { getParticipants } from "@/lib/api"
+import { getParticipants, getFights } from "@/lib/api"
 import { Input } from "@/components/ui/input"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { toast } from "sonner"
 import { Badge } from "@/components/ui/badge"
-import { Participant } from "@/types"
+import { Participant, Fight } from "@/types"
+import { cn } from "@/lib/utils"
 
 interface ScoreTabProps {
   category: string
@@ -14,12 +15,17 @@ interface ScoreTabProps {
 
 export default function ScoreTab({ category }: ScoreTabProps) {
   const [pools, setPools] = useState<Record<number, Participant[]>>({})
+  const [validatedPools, setValidatedPools] = useState<Set<number>>(new Set())
   const [loading, setLoading] = useState(false)
 
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await getParticipants(category)
+      const [data, fightsData] = await Promise.all([
+          getParticipants(category),
+          getFights(category)
+      ])
+
       const grouped: Record<number, Participant[]> = {}
       data.forEach(p => {
          const pool = p.pool_number || 0
@@ -27,6 +33,13 @@ export default function ScoreTab({ category }: ScoreTabProps) {
          grouped[pool].push(p)
       })
       setPools(grouped)
+
+      const valPools = new Set<number>()
+      fightsData.forEach((f: Fight) => {
+          if (f.validated) valPools.add(f.pool_number)
+      })
+      setValidatedPools(valPools)
+
     } catch {
       toast.error("Erreur de chargement")
     } finally {
@@ -44,7 +57,7 @@ export default function ScoreTab({ category }: ScoreTabProps) {
     <div className="py-4 space-y-6">
         {loading && <div className="text-center">Chargement...</div>}
         {Object.entries(pools).sort((a,b) => parseInt(a[0]) - parseInt(b[0])).map(([poolNum, participants]) => (
-            <Card key={poolNum}>
+            <Card key={poolNum} className={cn(validatedPools.has(parseInt(poolNum)) && "border-green-500 border-2 bg-green-50/20")}>
                 <CardHeader>
                     <CardTitle className="flex justify-between items-center">
                         <span>Poule {poolNum === "0" ? "Non assignée" : poolNum}</span>

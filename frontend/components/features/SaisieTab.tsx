@@ -3,7 +3,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { NumberInput } from "@/components/ui/number-input"
 import { Label } from "@/components/ui/label"
 import {
   Select,
@@ -295,11 +294,11 @@ export default function SaisieTab({ category }: SaisieTabProps) {
               </div>
               <div className="space-y-2">
                 <Label>Année</Label>
-                <NumberInput value={birthYear} onChange={setBirthYear} />
+                <Input type="number" value={birthYear} onChange={(e) => setBirthYear(e.target.value)} />
               </div>
               <div className="space-y-2">
                 <Label>Poids (kg)</Label>
-                <NumberInput step="0.1" value={weight} onChange={setWeight} />
+                <Input type="number" step="0.1" value={weight} onChange={(e) => setWeight(e.target.value)} />
               </div>
             </div>
 

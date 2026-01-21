@@ -10,6 +10,7 @@ export interface Participant {
   pool_number?: number | null;
   score?: number | null;
   victories?: number;
+  has_fights?: boolean;
   hors_categorie?: boolean;
 }
 
@@ -31,6 +32,7 @@ export interface Fight {
   score1: number;
   score2: number;
   winner_id: number | null;
+  validated?: boolean;
 }
 
 export type ParticipantCreate = Omit<Participant, 'id'>;

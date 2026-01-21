@@ -33,3 +33,5 @@ export const getFights = (category?: string, poolNumber?: number) =>
   api.get<any[]>(`/fights?${category ? `category=${encodeURIComponent(category)}` : ''}${poolNumber ? `&pool_number=${poolNumber}` : ''}`).then(res => res.data);
 export const createFights = (fights: any[]) => api.post('/fights', fights).then(res => res.data);
 export const updateFight = (id: number, data: any) => api.put(`/fights/${id}`, data).then(res => res.data);
+export const validatePool = (category: string, poolNumber: number, validated: boolean) => 
+  api.post('/fights/validate_pool', { category, pool_number: poolNumber, validated }).then(res => res.data);

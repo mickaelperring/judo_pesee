@@ -1,4 +1,4 @@
-from sqlalchemy import Column, Integer, String, Float, Boolean
+from sqlalchemy import Column, Integer, String, Float, Boolean, ForeignKey
 from database import Base
 
 class Participant(Base):
@@ -23,11 +23,12 @@ class Fight(Base):
     category = Column(String)
     pool_number = Column(Integer)
     order = Column(Integer)
-    fighter1_id = Column(Integer)
-    fighter2_id = Column(Integer)
+    fighter1_id = Column(Integer, ForeignKey("participants.id"))
+    fighter2_id = Column(Integer, ForeignKey("participants.id"))
     score1 = Column(Integer, default=0)
     score2 = Column(Integer, default=0)
     winner_id = Column(Integer, nullable=True)
+    validated = Column(Boolean, default=False)
 
 class PoolAssignment(Base):
     __tablename__ = "pool_assignments"

@@ -27,7 +27,7 @@ import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Wand2, ExternalLink } from "lucide-react"
+import { Wand2, ExternalLink, GripVertical } from "lucide-react"
 import Link from "next/link"
 
 // --- Components ---
@@ -59,11 +59,14 @@ function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardD
 
     const content = (
         <div className={cn(
-            "bg-card border rounded-md p-2 shadow-sm cursor-grab touch-none select-none flex flex-col gap-1 w-44",
+            "bg-card border rounded-md p-2 shadow-sm select-none flex flex-col gap-1 w-44",
             isOverlay ? "cursor-grabbing shadow-xl border-primary" : "hover:border-primary/50"
         )}>
             <div className="flex justify-between items-center border-b pb-1 mb-1">
-                <span className="font-bold text-xs truncate w-3/4" title={data.label}>{data.label}</span>
+                <div {...attributes} {...listeners} className="touch-none p-1 -m-1 cursor-grab active:cursor-grabbing">
+                    <GripVertical className="h-3 w-3 text-muted-foreground" />
+                </div>
+                <span className="font-bold text-[10px] truncate flex-1 ml-2" title={data.label}>{data.label}</span>
                 <span className="text-[10px] bg-secondary px-1.5 rounded-full">{data.participantCount}</span>
             </div>
             <div className="text-xs text-muted-foreground space-y-0.5 max-h-20 overflow-hidden">
@@ -78,7 +81,7 @@ function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardD
     if (isOverlay) return content
 
     return (
-        <div ref={setNodeRef} style={style} {...attributes} {...listeners}>
+        <div ref={setNodeRef} style={style}>
             {content}
         </div>
     )

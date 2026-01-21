@@ -45,6 +45,9 @@ interface ListItem {
 }
 
 function SortableItem({ id, item, minWeight, maxWeight, onToggleHC }: { id: string, item: ListItem, minWeight: number, maxWeight: number, onToggleHC: (id: number, val: boolean) => void }) {
+  const p = item.data
+  const hasFights = p?.has_fights || false
+
   const {
     attributes,
     listeners,
@@ -52,7 +55,7 @@ function SortableItem({ id, item, minWeight, maxWeight, onToggleHC }: { id: stri
     transform,
     transition,
     isDragging
-  } = useSortable({ id })
+  } = useSortable({ id, disabled: item.type === "participant" && hasFights })
 
   const style = {
     transform: CSS.Transform.toString(transform),
@@ -63,44 +66,51 @@ function SortableItem({ id, item, minWeight, maxWeight, onToggleHC }: { id: stri
 
   if (item.type === "separator") {
     return (
-      <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="py-0.5 cursor-row-resize group">
-         <div className="h-0.5 bg-border group-hover:bg-primary transition-colors relative flex items-center justify-center">
+      <div ref={setNodeRef} style={style} className="py-2 group flex items-center gap-2">
+         <div {...attributes} {...listeners} className="touch-none p-1 -m-1 cursor-row-resize opacity-0 group-hover:opacity-100 transition-opacity">
+            <GripVertical className="h-3.5 w-3.5 text-muted-foreground" />
+         </div>
+         <div className="flex-1 h-0.5 bg-border group-hover:bg-primary transition-colors relative flex items-center justify-center">
             <div className="bg-background px-2 text-[10px] text-muted-foreground border rounded-full">Poule</div>
          </div>
       </div>
     )
   }
 
-  const p = item.data! // Data should exist for participant
-  
   // Calculate relative weight percent
   let weightPercent = 0
-  if (maxWeight > minWeight) {
+  if (p && maxWeight > minWeight) {
       weightPercent = ((p.weight - minWeight) / (maxWeight - minWeight)) * 100
   } else {
-      // If all same weight or only one, show full or half?
-      // Let's say 100% to fill
       weightPercent = 100
   }
 
-  const isHC = p.hors_categorie || false
+  const isHC = p?.hors_categorie || false
 
   return (
-    <div ref={setNodeRef} style={style} {...attributes} {...listeners} className="mb-0.5 touch-none">
+    <div ref={setNodeRef} style={style} className="mb-0.5">
       <div className={cn(
-        "flex items-center gap-2 px-2 py-0.5 bg-card border rounded shadow-sm hover:bg-accent/50 transition-colors border-l-4 h-8", 
-        p.sex === 'M' ? "border-l-blue-500" : "border-l-pink-500",
-        isHC && "bg-neutral-200/50 dark:bg-neutral-800/50"
-      )}>
-        <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0 cursor-grab active:cursor-grabbing" />
+        "flex items-center gap-2 px-2 py-0.5 bg-card border rounded shadow-sm transition-colors border-l-4 h-8", 
+        !hasFights && "hover:bg-accent/50",
+        p?.sex === 'M' ? "border-l-blue-500" : "border-l-pink-500",
+        isHC && "bg-neutral-200/50 dark:bg-neutral-800/50",
+        hasFights && "bg-red-50 border-red-200 dark:bg-red-900/20 dark:border-red-800"
+      )} title={hasFights ? "Combats déjà joués, déplacement impossible" : ""}>
+        {hasFights ? (
+            <div className="h-3.5 w-3.5 shrink-0" />
+        ) : (
+            <div {...attributes} {...listeners} className="touch-none p-1 -m-1 cursor-grab active:cursor-grabbing">
+                <GripVertical className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+            </div>
+        )}
         
         <div className="flex-1 flex items-center gap-3 min-w-0">
              <div className="w-1/3 font-semibold truncate text-xs flex items-center gap-2">
-                {p.lastname} {p.firstname}
+                {p?.lastname} {p?.firstname}
              </div>
-             <div className="w-1/4 text-[10px] text-muted-foreground truncate">{p.club}</div>
+             <div className="w-1/4 text-[10px] text-muted-foreground truncate">{p?.club}</div>
              <div className="flex-1 flex items-center gap-2 min-w-0">
-                <span className="text-[10px] tabular-nums shrink-0">{p.weight} kg</span>
+                <span className="text-[10px] tabular-nums shrink-0">{p?.weight} kg</span>
                 <Progress value={weightPercent} className="h-1 flex-1 min-w-[20px]" />
              </div>
         </div>
@@ -114,9 +124,10 @@ function SortableItem({ id, item, minWeight, maxWeight, onToggleHC }: { id: stri
             <input 
                 type="checkbox" 
                 checked={isHC}
-                onChange={(e) => onToggleHC(p.id, e.target.checked)}
+                onChange={(e) => p && onToggleHC(p.id, e.target.checked)}
                 className="h-3 w-3 accent-destructive cursor-pointer"
                 title="Hors Catégorie"
+                disabled={hasFights}
             />
             <span className="text-[9px] text-muted-foreground whitespace-nowrap hidden sm:inline-block">HC</span>
         </div>
@@ -360,7 +371,7 @@ export default function PouleTab({ category }: PouleTabProps) {
            </Button>
        </div>
 
-       <div className="max-w-3xl mx-auto">
+       <div className="max-w-3xl mx-auto px-4">
           <DndContext 
             sensors={sensors} 
             collisionDetection={closestCenter} 

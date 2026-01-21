@@ -59,10 +59,28 @@ services:
       - POSTGRES_USER=user
       - POSTGRES_PASSWORD=password
       - POSTGRES_DB=judo_db
-    ports:
-      - "127.0.0.1:5433:5432" # Only accessible from localhost (use SSH tunnel for remote access)
     networks:
+      - default
+
+  webdb:
+    image: adminer
+    restart: always
+    ports:
+      - 8080:8080
+    environment:
+      - ADMINER_DEFAULT_SERVER=db
+    networks:
+      - default
       - traefik-network
+    labels:
+      - "traefik.enable=true"
+      - "traefik.docker.network=traefik-network"
+      - "traefik.http.routers.webdb.rule=Host(`judo-pesee.montlebon.com`) && PathPrefix(`/webdb`)"
+      - "traefik.http.routers.webdb.entrypoints=websecure"
+      - "traefik.http.routers.webdb.tls.certresolver=myresolver"
+      - "traefik.http.services.webdb.loadbalancer.server.port=8080"
+      - "traefik.http.routers.webdb.middlewares=judo-auth,webdb-strip"
+      - "traefik.http.middlewares.webdb-strip.stripprefix.prefixes=/webdb"
 
 volumes:
   postgres_data:

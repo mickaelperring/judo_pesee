@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback, useMemo } from "react"
-import { getParticipants, getPoolAssignments, getFights, createFights, updateFight, getConfig } from "@/lib/api"
+import { getParticipants, getPoolAssignments, getFights, createFights, updateFight, validatePool, getConfig } from "@/lib/api"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -34,9 +34,33 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     // Derived: Active Categories
     const [activeCategories, setActiveCategories] = useState<string[]>([])
 
-    // ... (loadData omitted)
+    const loadData = useCallback(async () => {
+        try {
+            // 1. Config
+            const confActive = await getConfig("active_categories")
+            const activeCats = confActive.value ? confActive.value.split(",") : []
+            setActiveCategories(activeCats)
 
-    // ... (loadActivePoolFights omitted)
+            // 2. Assignments
+            const allAssignments = await getPoolAssignments()
+            const tableAssignments = allAssignments.filter(a => 
+                a.table_number === parseInt(tableId) && activeCats.includes(a.category)
+            ).sort((a, b) => a.order - b.order)
+            setPools(tableAssignments)
+
+            // 3. Participants (All for now, filtering is client side optimization)
+            const allParticipants = await getParticipants()
+            setParticipants(allParticipants)
+        } catch (e) {
+            toast.error("Erreur de chargement")
+        } finally {
+            setLoading(false)
+        }
+    }, [tableId])
+
+    useEffect(() => {
+        loadData()
+    }, [loadData])
 
     // Reload fights for active pool
     const loadActivePoolFights = async (category: string, poolNumber: number) => {
@@ -90,7 +114,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
             loadActivePoolFights(p.category, p.pool_number)
         }
     }
-
+// ...
     const handleFightClick = (f: Fight) => {
         setScore1(f.score1)
         setScore2(f.score2)
@@ -134,6 +158,18 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
             }
         } catch {
             toast.error("Erreur sauvegarde")
+        }
+    }
+
+    const handleValidatePool = async (category: string, poolNumber: number, validated: boolean) => {
+        if (!validated && !confirm("Voulez-vous vraiment dé-valider cette poule ?")) return
+        
+        try {
+            await validatePool(category, poolNumber, validated)
+            toast.success(validated ? "Poule validée" : "Poule dé-validée")
+            await loadActivePoolFights(category, poolNumber)
+        } catch {
+            toast.error("Erreur")
         }
     }
 
@@ -193,8 +229,14 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                             <Card key={fight.id} className="cursor-pointer hover:bg-accent" onClick={() => handleFightClick(fight)}>
                                                 <CardContent className="p-3">
                                                     <div className="flex items-center justify-between gap-2 text-sm">
-                                                        <div className={cn("flex-1 text-right", fight.winner_id === p1.id && "font-bold text-green-600")}>
-                                                            <div className="truncate">{p1.lastname} {p1.firstname}</div>
+                                                        <div className="flex-1 text-right">
+                                                            <div className={cn(
+                                                                "flex items-center justify-end gap-1 font-semibold", 
+                                                                fight.winner_id !== p1.id && "text-red-600"
+                                                            )}>
+                                                                {fight.winner_id === p1.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
+                                                                <span className="truncate">{p1.lastname} {p1.firstname}</span>
+                                                            </div>
                                                             <div className="text-[10px] text-muted-foreground">{p1.club} {p1.hors_categorie && "(HC)"}</div>
                                                             <div className="text-[10px] text-muted-foreground">V: {p1.victories} - P: {p1.score}</div>
                                                         </div>
@@ -204,8 +246,11 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                             <span className="text-[10px] text-muted-foreground">Combat {fight.order}</span>
                                                         </div>
 
-                                                        <div className={cn("flex-1 text-left", fight.winner_id === p2.id && "font-bold text-green-600")}>
-                                                            <div className="truncate">{p2.lastname} {p2.firstname}</div>
+                                                        <div className="flex-1 text-left">
+                                                            <div className="flex items-center justify-start gap-1 font-semibold">
+                                                                <span className="truncate">{p2.lastname} {p2.firstname}</span>
+                                                                {fight.winner_id === p2.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
+                                                            </div>
                                                             <div className="text-[10px] text-muted-foreground">{p2.club} {p2.hors_categorie && "(HC)"}</div>
                                                             <div className="text-[10px] text-muted-foreground">V: {p2.victories} - P: {p2.score}</div>
                                                         </div>
@@ -214,6 +259,43 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                             </Card>
                                         )
                                     })}
+                                    
+                                    <div className="flex justify-end pt-4 pb-2 pr-2 border-t mt-4">
+                                        {(() => {
+                                            const isPoolFinished = fights.length > 0 && fights.every(f => f.winner_id !== null)
+                                            const isPoolValidated = fights.length > 0 && fights.every(f => f.validated)
+                                            
+                                            if (fights.length === 0) return null
+
+                                            if (!isPoolFinished) {
+                                                return (
+                                                    <div className="text-xs text-muted-foreground italic flex items-center gap-2">
+                                                        <span>En cours...</span>
+                                                    </div>
+                                                )
+                                            }
+
+                                            return isPoolValidated ? (
+                                                <Button 
+                                                    variant="default" 
+                                                    size="sm"
+                                                    className="bg-green-600 hover:bg-green-700"
+                                                    onClick={() => handleValidatePool(pool.category, pool.pool_number, false)}
+                                                >
+                                                    Poule Validée (Dé-valider)
+                                                </Button>
+                                            ) : (
+                                                <Button 
+                                                    variant="outline"
+                                                    size="sm"
+                                                    className="border-green-600 text-green-600 hover:bg-green-50"
+                                                    onClick={() => handleValidatePool(pool.category, pool.pool_number, true)}
+                                                >
+                                                    Valider la Poule
+                                                </Button>
+                                            )
+                                        })()}
+                                    </div>
                                 </div>
                             )}
                         </div>
@@ -231,8 +313,8 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                         <form onSubmit={handleScoreSave} className="space-y-6">
                             <div className="grid grid-cols-3 gap-4 items-center text-center">
                                 {/* Fighter 1 */}
-                                <div className="space-y-2">
-                                    <div className="font-bold truncate text-sm">
+                                <div className="space-y-2 flex flex-col items-center">
+                                    <div className="font-bold truncate text-sm text-red-600">
                                         {getParticipant(selectedFight.fighter1_id)?.lastname}
                                     </div>
                                     <NumberInput 

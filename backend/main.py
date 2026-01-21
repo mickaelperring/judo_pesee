@@ -60,24 +60,31 @@ def get_participants(category: Optional[str] = None, db: Session = Depends(get_d
         fight_query = fight_query.filter(models.Fight.category == category)
     fights = fight_query.all()
     
-    # Map id -> {score, victories}
-    stats = {p.id: {"score": 0, "victories": 0} for p in participants}
+    # Map id -> {score, victories, has_fights}
+    stats = {p.id: {"score": 0, "victories": 0, "has_fights": False} for p in participants}
     
     for f in fights:
+        is_played = f.winner_id is not None
+
         if f.fighter1_id in stats:
             stats[f.fighter1_id]["score"] += f.score1
             if f.winner_id == f.fighter1_id:
                 stats[f.fighter1_id]["victories"] += 1
+            if is_played:
+                stats[f.fighter1_id]["has_fights"] = True
         
         if f.fighter2_id in stats:
             stats[f.fighter2_id]["score"] += f.score2
             if f.winner_id == f.fighter2_id:
                 stats[f.fighter2_id]["victories"] += 1
+            if is_played:
+                stats[f.fighter2_id]["has_fights"] = True
                 
     # Attach to participant objects (transiently)
     for p in participants:
         p.score = stats[p.id]["score"]
         p.victories = stats[p.id]["victories"]
+        p.has_fights = stats[p.id]["has_fights"]
         
     return participants
 
@@ -121,6 +128,19 @@ def update_fight(fight_id: int, fight_update: schemas.FightUpdate, db: Session =
     db.refresh(db_fight)
     return db_fight
 
+@app.post("/fights/validate_pool")
+def validate_pool(validation: schemas.PoolValidation, db: Session = Depends(get_db)):
+    fights = db.query(models.Fight).filter(
+        models.Fight.category == validation.category, 
+        models.Fight.pool_number == validation.pool_number
+    ).all()
+    
+    for f in fights:
+        f.validated = validation.validated
+        
+    db.commit()
+    return {"status": "ok"}
+
 @app.post("/participants", response_model=schemas.Participant)
 def create_participant(participant: schemas.ParticipantCreate, db: Session = Depends(get_db)):
     db_participant = models.Participant(**participant.dict())
@@ -156,10 +176,26 @@ def delete_participant(participant_id: int, db: Session = Depends(get_db)):
 def update_pools(updates: List[dict], db: Session = Depends(get_db)):
     # updates expects list of {id: int, pool_number: int}
     # This is for drag and drop updates
+    affected_keys = set() # (category, pool_number)
+
     for update in updates:
         p = db.query(models.Participant).filter(models.Participant.id == update['id']).first()
         if p:
+            # Mark old pool
+            if p.pool_number is not None:
+                affected_keys.add((p.category, p.pool_number))
+            
             p.pool_number = update['pool_number']
+            # Mark new pool
+            affected_keys.add((p.category, p.pool_number))
+            
+    # Delete fights for affected pools because composition changed
+    for (cat, pool_num) in affected_keys:
+        db.query(models.Fight).filter(
+            models.Fight.category == cat, 
+            models.Fight.pool_number == pool_num
+        ).delete()
+
     db.commit()
     return {"status": "ok"}
 
@@ -172,6 +208,9 @@ def get_clubs(db: Session = Depends(get_db)):
 # Placeholder for PDF and Algo
 @app.post("/generate_pools/{category}")
 def generate_pools(category: str, db: Session = Depends(get_db)):
+    # Reset fights for this category to ensure clean state
+    db.query(models.Fight).filter(models.Fight.category == category).delete()
+
     participants = db.query(models.Participant).filter(models.Participant.category == category).all()
     
     # Group by Sex
