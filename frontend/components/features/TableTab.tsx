@@ -22,12 +22,13 @@ import {
 } from "@dnd-kit/sortable"
 import { CSS } from "@dnd-kit/utilities"
 
-import { getParticipants, getPoolAssignments, updatePoolAssignments, getConfig } from "@/lib/api"
+import { getParticipants, getPoolAssignments, updatePoolAssignments, getConfig, getFights } from "@/lib/api"
+import { getPairings } from "@/lib/pairings"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
-import { Wand2, ExternalLink, GripVertical } from "lucide-react"
+import { Wand2, ExternalLink, GripVertical, CheckCircle2, PlayCircle, Trophy } from "lucide-react"
 import Link from "next/link"
 
 // --- Components ---
@@ -39,6 +40,7 @@ interface PoolCardData {
     participantCount: number
     label: string
     participants: string[]
+    status: "not_started" | "in_progress" | "finished" | "validated"
 }
 
 function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardData, isOverlay?: boolean }) {
@@ -57,17 +59,30 @@ function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardD
         opacity: isDragging ? 0.5 : 1
     }
 
+    const statusStyles = {
+        not_started: "bg-card border-muted hover:border-primary/50",
+        in_progress: "bg-blue-50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800",
+        finished: "bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800",
+        validated: "opacity-60 bg-muted/50 border-gray-300 dark:border-gray-700"
+    }
+
     const content = (
         <div className={cn(
-            "bg-card border rounded-md p-2 shadow-sm select-none flex flex-col gap-1 w-44",
-            isOverlay ? "cursor-grabbing shadow-xl border-primary" : "hover:border-primary/50"
+            "border rounded-md p-2 shadow-sm select-none flex flex-col gap-1 w-44 transition-colors",
+            statusStyles[data.status],
+            isOverlay && "cursor-grabbing shadow-xl border-primary"
         )}>
             <div className="flex justify-between items-center border-b pb-1 mb-1">
                 <div {...attributes} {...listeners} className="touch-none p-1 -m-1 cursor-grab active:cursor-grabbing">
                     <GripVertical className="h-3 w-3 text-muted-foreground" />
                 </div>
-                <span className="font-bold text-[10px] truncate flex-1 ml-2" title={data.label}>{data.label}</span>
-                <span className="text-[10px] bg-secondary px-1.5 rounded-full">{data.participantCount}</span>
+                <div className="flex items-center gap-1 flex-1 min-w-0 ml-2">
+                    {data.status === "in_progress" && <PlayCircle className="h-2.5 w-2.5 text-blue-500 shrink-0" />}
+                    {data.status === "finished" && <CheckCircle2 className="h-2.5 w-2.5 text-green-500 shrink-0" />}
+                    {data.status === "validated" && <Trophy className="h-2.5 w-2.5 text-gray-500 shrink-0" />}
+                    <span className="font-bold text-[10px] truncate" title={data.label}>{data.label}</span>
+                </div>
+                <span className="text-[10px] bg-secondary/50 px-1.5 rounded-full">{data.participantCount}</span>
             </div>
             <div className="text-xs text-muted-foreground space-y-0.5 max-h-20 overflow-hidden">
                 {data.participants.slice(0, 4).map((name, idx) => (
@@ -91,6 +106,14 @@ function TableRow({ id, title, items, isUnassigned = false }: { id: string, titl
     const { setNodeRef } = useSortable({ id, disabled: true }) 
     const tableId = id.replace("table-", "")
     
+    // Calculate total fights
+    // Formula: n * (n-1) / 2
+    const totalFights = items.reduce((acc, item) => {
+        const n = item.participantCount
+        const fights = n > 1 ? (n * (n - 1)) / 2 : 0
+        return acc + fights
+    }, 0)
+    
     return (
         <div className={cn(
             "flex flex-col md:flex-row items-start md:items-center gap-4 p-4 border rounded-lg transition-colors",
@@ -107,11 +130,16 @@ function TableRow({ id, title, items, isUnassigned = false }: { id: string, titl
                     </span>
                 </div>
                 {!isUnassigned && (
-                    <Button variant="outline" size="sm" className="w-full text-xs h-7" asChild>
-                        <Link href={`/table/${tableId}`}>
-                            <ExternalLink className="mr-2 h-3 w-3" /> Ouvrir
-                        </Link>
-                    </Button>
+                    <>
+                        <div className="text-xs text-muted-foreground font-medium">
+                            {totalFights} combats
+                        </div>
+                        <Button variant="outline" size="sm" className="w-full text-xs h-7" asChild>
+                            <Link href={`/table/${tableId}`}>
+                                <ExternalLink className="mr-2 h-3 w-3" /> Ouvrir
+                            </Link>
+                        </Button>
+                    </>
                 )}
             </div>
             
@@ -160,23 +188,34 @@ export default function TableTab() {
     }, [])
 
     const loadBoard = useCallback(async () => {
-        if (!isConfigLoaded) return
-
         try {
-            // Use local state activeCategories instead of fetching config again
-            const activeCats = activeCategories
+            // Fetch Config Fresh
+            const confActive = await getConfig("active_categories")
+            const activeCats = confActive.value ? confActive.value.split(",") : []
+            setActiveCategories(activeCats)
 
             if (activeCats.length === 0) {
+                 toast.warning("Aucune catégorie active trouvée")
                  setColumns({})
                  return
             }
 
-            const allParticipants = await getParticipants() 
+            const [allParticipants, allAssignments, allFights] = await Promise.all([
+                getParticipants(),
+                getPoolAssignments(),
+                getFights()
+            ])
+            
+            // toast.info(`Chargé: ${allParticipants.length} part., ${allAssignments.length} assign., ${allFights.length} combats`)
+            
             const poolsMap: Record<string, PoolCardData> = {}
+            
+            // 1. Group participants by pool
+            const normalizedActiveCats = activeCats.map(c => c.trim().toLowerCase())
             
             allParticipants.forEach(p => {
                 if (!p.pool_number) return
-                if (!activeCats.includes(p.category)) return
+                if (!normalizedActiveCats.includes(p.category.trim().toLowerCase())) return
 
                 const key = `${p.category}::${p.pool_number}`
                 if (!poolsMap[key]) {
@@ -186,15 +225,52 @@ export default function TableTab() {
                         poolNumber: p.pool_number,
                         participantCount: 0,
                         label: `${p.category} - P${p.pool_number}`,
-                        participants: []
+                        participants: [],
+                        status: "not_started"
                     }
                 }
                 poolsMap[key].participantCount++
                 poolsMap[key].participants.push(`${p.firstname} ${p.lastname}`)
             })
 
-            const allAssignments = await getPoolAssignments()
-            const assignments = allAssignments.filter(a => activeCats.includes(a.category))
+            // 2. Determine status for each pool
+            Object.keys(poolsMap).forEach(key => {
+                const pool = poolsMap[key]
+                const assignment = allAssignments.find(a => a.category === pool.category && a.pool_number === pool.poolNumber)
+                
+                if (assignment?.validated) {
+                    pool.status = "validated"
+                } else {
+                    const poolParticipants = allParticipants.filter(p => p.category === pool.category && p.pool_number === pool.poolNumber)
+                    const n = poolParticipants.length
+                    if (n < 2) {
+                        pool.status = "not_started"
+                    } else {
+                        const sortedP = [...poolParticipants].sort((a, b) => a.weight - b.weight)
+                        const pairings = getPairings(n)
+                        
+                        let playedCount = 0
+                        pairings.forEach(pair => {
+                            const p1 = sortedP[pair[0]-1]
+                            const p2 = sortedP[pair[1]-1]
+                            const fight = allFights.find(f => 
+                                f.winner_id !== null &&
+                                ((f.fighter1_id === p1.id && f.fighter2_id === p2.id) || 
+                                 (f.fighter1_id === p2.id && f.fighter2_id === p1.id))
+                            )
+                            if (fight) playedCount++
+                        })
+
+                        if (playedCount === 0) pool.status = "not_started"
+                        else if (playedCount === pairings.length) pool.status = "finished"
+                        else pool.status = "in_progress"
+                    }
+                }
+            })
+
+            const assignments = allAssignments.filter(a => 
+                normalizedActiveCats.includes(a.category.trim().toLowerCase())
+            )
             
             const cols: Record<string, PoolCardData[]> = {}
             
@@ -360,33 +436,49 @@ export default function TableTab() {
     }
 
     const handleAutoDistribute = () => {
-        if (!confirm("Cela va redistribuer toutes les poules sur les tables. Continuer ?")) return
+        if (!confirm("Cela va redistribuer toutes les poules sur les tables pour équilibrer le nombre de combats. Continuer ?")) return
 
         // Gather all items
         const allItems: PoolCardData[] = []
         Object.values(columns).forEach(items => allItems.push(...items))
         
-        // Sort by category then pool number
-        allItems.sort((a, b) => {
-            if (a.category !== b.category) return a.category.localeCompare(b.category)
-            return a.poolNumber - b.poolNumber
-        })
+        // Helper to calc fights
+        const getFights = (item: PoolCardData) => {
+            const n = item.participantCount
+            return n > 1 ? (n * (n - 1)) / 2 : 0
+        }
 
-        // Distribute
+        // Sort by fight count descending (Greedy approach: place heaviest items first)
+        allItems.sort((a, b) => getFights(b) - getFights(a))
+
+        // Initialize tables with 0 fights
+        const tableLoads = Array(tableCount).fill(0) // Index 0 is Table 1
         const newColumns: Record<string, PoolCardData[]> = {}
         for (let i = 1; i <= tableCount; i++) {
             newColumns[`table-${i}`] = []
         }
         newColumns["unassigned"] = []
 
-        allItems.forEach((item, index) => {
-            const tableIndex = (index % tableCount) + 1
-            newColumns[`table-${tableIndex}`].push(item)
+        allItems.forEach((item) => {
+            // Find table with min load
+            let minIndex = 0
+            let minLoad = tableLoads[0]
+            
+            for (let i = 1; i < tableCount; i++) {
+                if (tableLoads[i] < minLoad) {
+                    minLoad = tableLoads[i]
+                    minIndex = i
+                }
+            }
+
+            // Assign to this table
+            newColumns[`table-${minIndex + 1}`].push(item)
+            tableLoads[minIndex] += getFights(item)
         })
 
         setColumns(newColumns)
         saveAll(newColumns)
-        toast.success("Répartition automatique effectuée")
+        toast.success("Répartition équilibrée effectuée")
     }
 
     return (

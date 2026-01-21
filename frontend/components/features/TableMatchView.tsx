@@ -1,7 +1,7 @@
 "use client"
 
 import { useState, useEffect, useCallback } from "react"
-import { getParticipants, getPoolAssignments, getFights, createFights, updateFight, getConfig } from "@/lib/api"
+import { getParticipants, getPoolAssignments, getFights, createFights, updateFight, deleteFight, getConfig } from "@/lib/api"
 import { toast } from "sonner"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -28,6 +28,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     const [loading, setLoading] = useState(true)
     const [pools, setPools] = useState<PoolAssignment[]>([])
     const [participants, setParticipants] = useState<Participant[]>([])
+    const [allFights, setAllFights] = useState<Fight[]>([])
     const [fights, setFights] = useState<(Fight & { computedOrder: number })[]>([])
     const [activePool, setActivePool] = useState<string | null>(null) // "cat-poolNum"
     const [selectedFight, setSelectedFight] = useState<Fight | null>(null)
@@ -35,7 +36,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     const [score2, setScore2] = useState(0)
     const [manualWinner, setManualWinner] = useState<string>("0")
 
-    const loadData = useCallback(async () => {
+    const loadData = useCallback(async (isBackground = false) => {
         try {
             // 1. Config
             const confActive = await getConfig("active_categories")
@@ -48,18 +49,24 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
             ).sort((a, b) => a.order - b.order)
             setPools(tableAssignments)
 
-            // 3. Participants (All for now, filtering is client side optimization)
-            const allParticipants = await getParticipants()
+            // 3. Participants & Fights
+            const [allParticipants, fightsData] = await Promise.all([
+                getParticipants(),
+                getFights()
+            ])
             setParticipants(allParticipants)
+            setAllFights(fightsData)
         } catch {
-            toast.error("Erreur de chargement")
+            if (!isBackground) toast.error("Erreur de chargement")
         } finally {
-            setLoading(false)
+            if (!isBackground) setLoading(false)
         }
     }, [tableId])
 
     useEffect(() => {
         loadData()
+        const interval = setInterval(() => loadData(true), 5000)
+        return () => clearInterval(interval)
     }, [loadData])
 
     // Reload fights for active pool
@@ -151,29 +158,44 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
         e.preventDefault()
         if (!selectedFight) return
         
+        // Check if this is a reset (0-0 and no winner selected)
+        // Note: Manual winner is only allowed if score is 1-1, so if score is 0-0, winnerId is null.
+        const isReset = score1 === 0 && score2 === 0
+        
         const winnerId = effectiveWinner === "1" ? selectedFight.fighter1_id : 
                          effectiveWinner === "2" ? selectedFight.fighter2_id : null
 
         try {
-            const fightData = {
-                score1: score1,
-                score2: score2,
-                winner_id: winnerId,
-                // Ensure we send required fields for creation
-                category: selectedFight.category,
-                fighter1_id: selectedFight.fighter1_id,
-                fighter2_id: selectedFight.fighter2_id
-            }
-
-            if (selectedFight.id === -1) {
-                // Create
-                await createFights([fightData])
+            if (isReset) {
+                // If it's a reset, we delete the fight if it exists
+                if (selectedFight.id !== -1) {
+                    await deleteFight(selectedFight.id)
+                    toast.success("Combat réinitialisé")
+                } else {
+                    // It wasn't saved yet, so just close the dialog
+                    toast.info("Aucun changement enregistré")
+                }
             } else {
-                // Update
-                await updateFight(selectedFight.id, fightData)
+                const fightData = {
+                    score1: score1,
+                    score2: score2,
+                    winner_id: winnerId,
+                    // Ensure we send required fields for creation
+                    category: selectedFight.category,
+                    fighter1_id: selectedFight.fighter1_id,
+                    fighter2_id: selectedFight.fighter2_id
+                }
+
+                if (selectedFight.id === -1) {
+                    // Create
+                    await createFights([fightData])
+                } else {
+                    // Update
+                    await updateFight(selectedFight.id, fightData)
+                }
+                toast.success("Combat enregistré")
             }
             
-            toast.success("Combat enregistré")
             setSelectedFight(null)
             
             if (activePool) {
@@ -212,11 +234,47 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                     const isActive = activePool === `${pool.category}-${pool.pool_number}`
                     const poolParticipants = participants.filter(p => p.category === pool.category && p.pool_number === pool.pool_number)
                     
+                    // Determine Status
+                    let status = "not_started"
+                    if (pool.validated) {
+                        status = "validated"
+                    } else if (poolParticipants.length >= 2) {
+                        const sortedP = [...poolParticipants].sort((a, b) => a.weight - b.weight)
+                        const pairings = getPairings(sortedP.length)
+                        
+                        let playedCount = 0
+                        pairings.forEach(pair => {
+                            const p1 = sortedP[pair[0]-1]
+                            const p2 = sortedP[pair[1]-1]
+                            const fight = allFights.find(f => 
+                                f.winner_id !== null &&
+                                ((f.fighter1_id === p1.id && f.fighter2_id === p2.id) || 
+                                 (f.fighter1_id === p2.id && f.fighter2_id === p1.id))
+                            )
+                            if (fight) playedCount++
+                        })
+
+                        if (playedCount > 0) {
+                            status = playedCount === pairings.length ? "finished" : "in_progress"
+                        }
+                    }
+
+                    const statusStyles = {
+                        not_started: isActive ? "bg-muted/50" : "hover:bg-muted/20",
+                        in_progress: "bg-blue-50 border-blue-200 dark:bg-blue-900/10 dark:border-blue-800",
+                        finished: "bg-green-50 border-green-200 dark:bg-green-900/10 dark:border-green-800",
+                        validated: "opacity-60 bg-muted/50 border-gray-300 dark:border-gray-700"
+                    }
+
                     return (
                         <div key={pool.id} className="space-y-2">
                             {/* Pool Card */}
                             <Card 
-                                className={cn("cursor-pointer transition-colors border-l-4 border-l-primary", isActive ? "bg-muted/50" : "hover:bg-muted/20")}
+                                className={cn(
+                                    "cursor-pointer transition-colors border-l-4 border-l-primary",
+                                    // @ts-ignore
+                                    statusStyles[status]
+                                )}
                                 onClick={() => handlePoolClick(pool)}
                             >
                                 <CardHeader className="p-4">
@@ -239,6 +297,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         if (!p1 || !p2) return null
                                         
                                         const isSaved = fight.id !== -1
+                                        const isPlayed = isSaved && fight.winner_id !== null
                                         const isDraw = isSaved && fight.winner_id === null
                                         
                                         return (
@@ -246,7 +305,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                 key={fight.id === -1 ? `temp-${fight.computedOrder}` : fight.id} 
                                                 className={cn(
                                                     "cursor-pointer hover:bg-accent transition-colors",
-                                                    isSaved && "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                                                    isPlayed && "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
                                                 )} 
                                                 onClick={() => handleFightClick(fight)}
                                             >
@@ -286,7 +345,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                     
                                     <div className="flex justify-end pt-4 pb-2 pr-2 border-t mt-4">
                                         {(() => {
-                                            const isPoolFinished = fights.length > 0 && fights.every(f => f.id !== -1)
+                                            const isPoolFinished = fights.length > 0 && fights.every(f => f.id !== -1 && f.winner_id !== null)
                                             
                                             if (fights.length === 0) return null
 
@@ -324,7 +383,10 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                 {/* Fighter 1 */}
                                 <div className="space-y-2 flex flex-col items-center">
                                     <div className="font-bold truncate text-sm text-red-600">
-                                        {getParticipant(selectedFight.fighter1_id)?.lastname}
+                                        {(() => {
+                                            const p = getParticipant(selectedFight.fighter1_id);
+                                            return p ? `${p.firstname} ${p.lastname}` : "";
+                                        })()}
                                     </div>
                                     <NumberInput 
                                         name="score1" 
@@ -354,9 +416,12 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                 <div className="text-muted-foreground font-bold">VS</div>
 
                                 {/* Fighter 2 */}
-                                <div className="space-y-2">
+                                <div className="space-y-2 flex flex-col items-center">
                                     <div className="font-bold truncate text-sm">
-                                        {getParticipant(selectedFight.fighter2_id)?.lastname}
+                                        {(() => {
+                                            const p = getParticipant(selectedFight.fighter2_id);
+                                            return p ? `${p.firstname} ${p.lastname}` : "";
+                                        })()}
                                     </div>
                                     <NumberInput 
                                         name="score2" 
@@ -397,7 +462,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         disabled={!isManualAllowed}
                                         className="h-4 w-4" 
                                     />
-                                    Match nul / En cours
+                                    Match nul
                                 </label>
                             </div>
 

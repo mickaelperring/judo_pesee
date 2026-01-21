@@ -133,6 +133,16 @@ def update_fight(fight_id: int, fight_update: schemas.FightUpdate, db: Session =
     db.refresh(db_fight)
     return db_fight
 
+@app.delete("/fights/{fight_id}")
+def delete_fight(fight_id: int, db: Session = Depends(get_db)):
+    db_fight = db.query(models.Fight).filter(models.Fight.id == fight_id).first()
+    if not db_fight:
+        raise HTTPException(status_code=404, detail="Fight not found")
+    
+    db.delete(db_fight)
+    db.commit()
+    return {"message": "Fight deleted"}
+
 @app.post("/participants", response_model=schemas.Participant)
 def create_participant(participant: schemas.ParticipantCreate, db: Session = Depends(get_db)):
     db_participant = models.Participant(**participant.dict())
@@ -206,6 +216,21 @@ def update_pools(updates: List[dict], db: Session = Depends(get_db)):
         
         for f in fights_to_delete:
             db.delete(f)
+
+        # Check if pool is empty
+        count = db.query(models.Participant).filter(
+            models.Participant.category == cat, 
+            models.Participant.pool_number == pool_num
+        ).count()
+        
+        if count == 0:
+            # Delete assignment if exists
+            assignment = db.query(models.PoolAssignment).filter(
+                models.PoolAssignment.category == cat,
+                models.PoolAssignment.pool_number == pool_num
+            ).first()
+            if assignment:
+                db.delete(assignment)
 
     db.commit()
     return {"status": "ok"}
@@ -431,3 +456,35 @@ def update_pool_assignments(assignments: List[schemas.PoolAssignmentBase], db: S
             
     db.commit()
     return {"status": "ok"}
+
+@app.post("/pool_assignments/validate")
+def validate_pool(validation: schemas.PoolValidation, db: Session = Depends(get_db)):
+    print(f"Received validation request: {validation}")
+    category = validation.category
+    pool_number = validation.pool_number
+    validated = validation.validated
+
+    existing = db.query(models.PoolAssignment).filter(
+        models.PoolAssignment.category == category,
+        models.PoolAssignment.pool_number == pool_number
+    ).first()
+
+    print(f"Existing assignment found: {existing}")
+
+    if existing:
+        existing.validated = validated
+        db.add(existing) # Ensure session tracks it
+    else:
+        # If no assignment exists (pool not on table), create one.
+        # Use table_number=0 to indicate unassigned to a physical table but tracking status
+        new_assign = models.PoolAssignment(
+            category=category, 
+            pool_number=pool_number,
+            table_number=0, 
+            order=0,
+            validated=validated
+        )
+        db.add(new_assign)
+    
+    db.commit()
+    return {"status": "ok", "validated": validated}

@@ -80,8 +80,8 @@ export default function JudoManager() {
         <TabsList className="grid w-full grid-cols-6">
           <TabsTrigger value="saisie">Saisie</TabsTrigger>
           <TabsTrigger value="poule" disabled={!selectedCategory}>Poules</TabsTrigger>
-          <TabsTrigger value="score" disabled={!selectedCategory}>Score</TabsTrigger>
           <TabsTrigger value="table">Tables</TabsTrigger>
+          <TabsTrigger value="score" disabled={!selectedCategory}>Score</TabsTrigger>
           <TabsTrigger value="stats">Stats</TabsTrigger>
           <TabsTrigger value="admin">Admin</TabsTrigger>
         </TabsList>

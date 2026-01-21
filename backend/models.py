@@ -35,6 +35,7 @@ class PoolAssignment(Base):
     pool_number = Column(Integer)
     table_number = Column(Integer) # 1 to N
     order = Column(Integer)
+    validated = Column(Boolean, default=False)
 
 class Configuration(Base):
     __tablename__ = "configuration"

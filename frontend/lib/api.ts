@@ -25,11 +25,14 @@ export const getScoreSheetUrl = (category: string, baseUrl?: string) =>
 // Config & Tables
 export const getConfig = (key: string) => api.get<{value: string | null}>(`/configuration/${key}`).then(res => res.data);
 export const updateConfig = (key: string, value: string) => api.post('/configuration', { key, value }).then(res => res.data);
-export const getPoolAssignments = () => api.get<PoolAssignment[]>('/pool_assignments').then(res => res.data);
+export const getPoolAssignments = () => api.get<PoolAssignment[]>(`/pool_assignments?_t=${Date.now()}`).then(res => res.data);
 export const updatePoolAssignments = (assignments: Omit<PoolAssignment, 'id'>[]) => api.post('/pool_assignments/batch', assignments).then(res => res.data);
+export const validatePool = (category: string, poolNumber: number, validated: boolean) => 
+  api.post('/pool_assignments/validate', { category, pool_number: poolNumber, validated }).then(res => res.data);
 
 // Fights
 export const getFights = (category?: string, poolNumber?: number) => 
   api.get<any[]>(`/fights?${category ? `category=${encodeURIComponent(category)}` : ''}${poolNumber ? `&pool_number=${poolNumber}` : ''}`).then(res => res.data);
 export const createFights = (fights: any[]) => api.post('/fights', fights).then(res => res.data);
 export const updateFight = (id: number, data: any) => api.put(`/fights/${id}`, data).then(res => res.data);
+export const deleteFight = (id: number) => api.delete(`/fights/${id}`).then(res => res.data);

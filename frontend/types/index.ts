@@ -15,11 +15,12 @@ export interface Participant {
 }
 
 export interface PoolAssignment {
-  id?: number;
-  category: string;
-  pool_number: number;
-  table_number: number;
-  order: number;
+    id: number;
+    category: string;
+    pool_number: number;
+    table_number: number;
+    order: number;
+    validated?: boolean;
 }
 
 export interface Fight {

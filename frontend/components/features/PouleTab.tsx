@@ -238,6 +238,10 @@ export default function PouleTab({ category }: PouleTabProps) {
     }
   }, [items])
 
+  const hasAnyFights = useMemo(() => {
+    return items.some(item => item.type === "participant" && item.data?.has_fights)
+  }, [items])
+
   const handleGenerate = async () => {
      if (!confirm("Attention, cela va écraser les poules actuelles. Continuer ?")) return
      setLoading(true)
@@ -373,9 +377,11 @@ export default function PouleTab({ category }: PouleTabProps) {
 
        <div className="flex justify-between items-center bg-card p-4 rounded-lg border">
            <div className="flex gap-2">
-               <Button onClick={handleGenerate} disabled={loading}>
-                   <RefreshCw className="mr-2 h-4 w-4" /> Générer Auto
-               </Button>
+               {!hasAnyFights && (
+                   <Button onClick={handleGenerate} disabled={loading}>
+                       <RefreshCw className="mr-2 h-4 w-4" /> Générer Auto
+                   </Button>
+               )}
                <Button variant="secondary" onClick={handleAddSeparator}>
                    <Plus className="mr-2 h-4 w-4" /> Ajouter Poule
                </Button>

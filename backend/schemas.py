@@ -62,6 +62,7 @@ class PoolAssignmentBase(BaseModel):
     pool_number: int
     table_number: int
     order: int
+    validated: bool = False
 
 class PoolAssignmentCreate(PoolAssignmentBase):
     pass
@@ -73,5 +74,17 @@ class PoolAssignment(PoolAssignmentBase):
         orm_mode = True
 
 class ConfigUpdate(BaseModel):
+
     key: str
+
     value: str
+
+
+
+class PoolValidation(BaseModel):
+
+    category: str
+
+    pool_number: int
+
+    validated: bool = True
