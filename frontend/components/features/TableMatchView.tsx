@@ -314,10 +314,10 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                         <div className="flex-1 text-right">
                                                             <div className={cn(
                                                                 "flex items-center justify-end gap-1 font-semibold", 
-                                                                isSaved && fight.winner_id !== p1.id && !isDraw && "text-red-600"
+                                                                isSaved && fight.winner_id !== p1.id && !isDraw ? "text-red-600/50" : "text-red-600"
                                                             )}>
                                                                 {fight.winner_id === p1.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
-                                                                <span className="truncate">{p1.lastname} {p1.firstname}</span>
+                                                                <span className="truncate">{p1.firstname} {p1.lastname}</span>
                                                             </div>
                                                             <div className="text-[10px] text-muted-foreground">{p1.club} {p1.hors_categorie && "(HC)"}</div>
                                                             <div className="text-[10px] text-muted-foreground">V: {p1.victories} - P: {p1.score}</div>
@@ -331,7 +331,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
 
                                                         <div className="flex-1 text-left">
                                                             <div className="flex items-center justify-start gap-1 font-semibold">
-                                                                <span className="truncate">{p2.lastname} {p2.firstname}</span>
+                                                                <span className="truncate">{p2.firstname} {p2.lastname}</span>
                                                                 {fight.winner_id === p2.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
                                                             </div>
                                                             <div className="text-[10px] text-muted-foreground">{p2.club} {p2.hors_categorie && "(HC)"}</div>
