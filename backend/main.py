@@ -25,6 +25,14 @@ app.add_middleware(
 
 DATA_DIR = os.path.join(os.path.dirname(__file__), "data")
 
+import yaml
+
+@app.get("/chrono_config")
+def get_chrono_config():
+    with open(os.path.join(DATA_DIR, "chrono_config.yaml"), "r") as f:
+        config = yaml.safe_load(f)
+    return config
+
 @app.get("/categories", response_model=List[str])
 def get_categories():
     df = pd.read_csv(os.path.join(DATA_DIR, "categories.csv"))
@@ -189,31 +197,9 @@ def update_pools(updates: List[dict], db: Session = Depends(get_db)):
             # Mark new pool
             affected_keys.add((p.category, p.pool_number))
             
-    # Second Pass: Delete fights for affected pools
-    # Because composition changed, existing fights are invalid or need regeneration
-    # We find fights where either fighter is in the affected pool?
-    # Actually, simpler: for each affected pool, find fights where fighter1 is in that pool.
-    # But wait, we just updated the participants! So if we query now, we get the NEW composition.
-    # What about the OLD composition?
-    # If a participant moved FROM pool A TO pool B.
-    # Pool A has lost a fighter. Pool B has gained a fighter.
-    # We should reset fights for BOTH pools.
-    
-    # Logic: Delete all fights where fighter1 belongs to an affected pool.
-    # (assuming fighter2 is in same pool)
-    
-    # We can iterate over affected keys
+    # Second Pass: Cleanup empty assignments
+    # We no longer delete fights for affected pools to preserve history
     for (cat, pool_num) in affected_keys:
-        # Find fights via join
-        fights_to_delete = db.query(models.Fight).join(models.Participant, models.Fight.fighter1_id == models.Participant.id)\
-            .filter(
-                models.Fight.category == cat, 
-                models.Participant.pool_number == pool_num
-            ).all()
-        
-        for f in fights_to_delete:
-            db.delete(f)
-
         # Check if pool is empty
         count = db.query(models.Participant).filter(
             models.Participant.category == cat, 
@@ -388,17 +374,19 @@ def get_stats(db: Session = Depends(get_db)):
     # Enrich participants
     for p in participants:
         p.score = stats_map[p.id]["score"]
-        # p.victories etc if needed
+        p.victories = stats_map[p.id]["victories"]
     
     data = [{
         "club": p.club, 
         "score": p.score,
-        "has_score": p.score > 0 or stats_map[p.id]["has_fights"] # Logic: has participated
+        "victories": p.victories,
+        "has_score": p.score > 0 or stats_map[p.id]["has_fights"]
     } for p in participants]
     
     df = pd.DataFrame(data)
     stats = df.groupby('club').agg(
         total_score=('score', 'sum'),
+        total_victories=('victories', 'sum'),
         count=('club', 'count')
     ).reset_index().to_dict(orient='records')
     

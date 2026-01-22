@@ -297,7 +297,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         if (!p1 || !p2) return null
                                         
                                         const isSaved = fight.id !== -1
-                                        const isPlayed = isSaved && fight.winner_id !== null
+                                        const isPlayed = isSaved // Since 0-0 are deleted, any saved fight is finished
                                         const isDraw = isSaved && fight.winner_id === null
                                         
                                         return (
@@ -318,6 +318,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                             )}>
                                                                 {fight.winner_id === p1.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
                                                                 <span className="truncate">{p1.firstname} {p1.lastname}</span>
+                                                                {p1.hors_categorie && <Badge variant="outline" className="text-[8px] h-3 px-1 border-rose-500 text-rose-500 font-black">HC</Badge>}
                                                             </div>
                                                             <div className="text-[10px] text-muted-foreground">{p1.club} {p1.hors_categorie && "(HC)"}</div>
                                                             <div className="text-[10px] text-muted-foreground">V: {p1.victories} - P: {p1.score}</div>
@@ -332,6 +333,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                         <div className="flex-1 text-left">
                                                             <div className="flex items-center justify-start gap-1 font-semibold">
                                                                 <span className="truncate">{p2.firstname} {p2.lastname}</span>
+                                                                {p2.hors_categorie && <Badge variant="outline" className="text-[8px] h-3 px-1 border-indigo-500 text-indigo-500 font-black">HC</Badge>}
                                                                 {fight.winner_id === p2.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
                                                             </div>
                                                             <div className="text-[10px] text-muted-foreground">{p2.club} {p2.hors_categorie && "(HC)"}</div>
@@ -345,7 +347,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                     
                                     <div className="flex justify-end pt-4 pb-2 pr-2 border-t mt-4">
                                         {(() => {
-                                            const isPoolFinished = fights.length > 0 && fights.every(f => f.id !== -1 && f.winner_id !== null)
+                                            const isPoolFinished = fights.length > 0 && fights.every(f => f.id !== -1)
                                             
                                             if (fights.length === 0) return null
 

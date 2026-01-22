@@ -128,7 +128,6 @@ function SortableItem({ id, item, minWeight, maxWeight, onToggleHC }: { id: stri
                 onChange={(e) => p && onToggleHC(p.id, e.target.checked)}
                 className="h-3 w-3 accent-destructive cursor-pointer"
                 title="Hors Catégorie"
-                disabled={hasFights}
             />
             <span className="text-[9px] text-muted-foreground whitespace-nowrap hidden sm:inline-block">HC</span>
         </div>

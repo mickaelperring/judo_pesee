@@ -126,7 +126,9 @@ function TableRow({ id, title, items, isUnassigned = false }: { id: string, titl
     return (
         <div className={cn(
             "flex flex-col md:flex-row items-start md:items-center gap-4 p-4 border rounded-lg transition-colors",
-            isUnassigned ? "bg-muted/20 border-dashed border-2 min-h-[120px]" : "bg-card shadow-sm min-h-[100px]"
+            isUnassigned 
+                ? (items.length > 0 ? "bg-amber-500/10 border-amber-500/50 border-dashed border-2 min-h-[120px]" : "bg-muted/20 border-dashed border-2 min-h-[120px]") 
+                : "bg-card shadow-sm min-h-[100px]"
         )}>
             <div className="w-32 shrink-0 flex flex-col gap-2">
                 <div className={cn(
@@ -248,11 +250,10 @@ export default function TableTab() {
             // Optimize: Create a set of played pairings for O(1) lookup
             const playedPairings = new Set<string>()
             allFights.forEach(f => {
-                if (f.winner_id !== null) {
-                    const p1 = Math.min(f.fighter1_id, f.fighter2_id)
-                    const p2 = Math.max(f.fighter1_id, f.fighter2_id)
-                    playedPairings.add(`${p1}-${p2}`)
-                }
+                // Any fight in the DB is considered played (0-0 are deleted)
+                const p1 = Math.min(f.fighter1_id, f.fighter2_id)
+                const p2 = Math.max(f.fighter1_id, f.fighter2_id)
+                playedPairings.add(`${p1}-${p2}`)
             })
 
             Object.keys(poolsMap).forEach(key => {
@@ -462,30 +463,44 @@ export default function TableTab() {
     }
 
     const handleAutoDistribute = () => {
-        if (!confirm("Cela va redistribuer toutes les poules sur les tables pour équilibrer le nombre de combats. Continuer ?")) return
+        if (!confirm("Cela va redistribuer les poules non commencées sur les tables pour équilibrer le nombre de combats. Les poules en cours ou terminées ne seront pas déplacées. Continuer ?")) return
 
-        // Gather all items
-        const allItems: PoolCardData[] = []
-        Object.values(columns).forEach(items => allItems.push(...items))
-        
-        // Helper to calc fights
-        const getFights = (item: PoolCardData) => {
-            const n = item.participantCount
-            return n > 1 ? (n * (n - 1)) / 2 : 0
-        }
-
-        // Sort by fight count descending (Greedy approach: place heaviest items first)
-        allItems.sort((a, b) => getFights(b) - getFights(a))
-
-        // Initialize tables with 0 fights
-        const tableLoads = Array(tableCount).fill(0) // Index 0 is Table 1
+        // 1. Initialize tables and identify fixed pools
+        const tableLoads = Array(tableCount).fill(0)
         const newColumns: Record<string, PoolCardData[]> = {}
         for (let i = 1; i <= tableCount; i++) {
             newColumns[`table-${i}`] = []
         }
         newColumns["unassigned"] = []
 
-        allItems.forEach((item) => {
+        // Helper to calc fights
+        const getFights = (item: PoolCardData) => {
+            const n = item.participantCount
+            return n > 1 ? (n * (n - 1)) / 2 : 0
+        }
+
+        // 2. Separate movable pools from fixed ones
+        const movablePools: PoolCardData[] = []
+        
+        Object.entries(columns).forEach(([colId, items]) => {
+            items.forEach(item => {
+                if (item.status !== "not_started" && colId.startsWith("table-")) {
+                    // Fixed: Keep in current table and count load
+                    const tableIdx = parseInt(colId.replace("table-", "")) - 1
+                    newColumns[colId].push(item)
+                    tableLoads[tableIdx] += getFights(item)
+                } else {
+                    // Movable: Unstarted pools or anything in "unassigned"
+                    movablePools.push(item)
+                }
+            })
+        })
+
+        // 3. Sort movable pools by fight count descending (Greedy approach)
+        movablePools.sort((a, b) => getFights(b) - getFights(a))
+
+        // 4. Distribute movable pools
+        movablePools.forEach((item) => {
             // Find table with min load
             let minIndex = 0
             let minLoad = tableLoads[0]
@@ -504,7 +519,7 @@ export default function TableTab() {
 
         setColumns(newColumns)
         saveAll(newColumns)
-        toast.success("Répartition équilibrée effectuée")
+        toast.success("Répartition équilibrée des nouvelles poules effectuée")
     }
 
     return (
@@ -542,8 +557,10 @@ export default function TableTab() {
                 onDragEnd={handleDragEnd}
             >
                 <div className="space-y-4">
-                     {/* Unassigned Area */}
-                     <TableRow id="unassigned" title="À placer" items={columns["unassigned"] || []} isUnassigned />
+                     {/* Unassigned Area - Only show if not empty */}
+                     {(columns["unassigned"]?.length > 0) && (
+                        <TableRow id="unassigned" title="À placer" items={columns["unassigned"]} isUnassigned />
+                     )}
                      
                      {/* Tables */}
                      <div className="space-y-2">

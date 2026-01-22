@@ -63,13 +63,12 @@ export default function ScoreTab({ category }: ScoreTabProps) {
           const n = sortedPoolParticipants.length
           const pairings = getPairings(n)
 
-          // Check if all expected pairings have a corresponding fight with a winner
+          // Check if all expected pairings have a corresponding fight
           const allPlayed = pairings.every(pair => {
               const p1Id = sortedPoolParticipants[pair[0] - 1].id
               const p2Id = sortedPoolParticipants[pair[1] - 1].id
               
               return fightsData.some(f => 
-                  f.winner_id !== null &&
                   ((f.fighter1_id === p1Id && f.fighter2_id === p2Id) || 
                    (f.fighter1_id === p2Id && f.fighter2_id === p1Id))
               )
@@ -181,32 +180,92 @@ export default function ScoreTab({ category }: ScoreTabProps) {
                             </div>
                         </CardTitle>
                     </CardHeader>
-                    <CardContent className="grid gap-4">
-                    {participants.map(p => (
-                        <div key={p.id} className="flex items-center gap-4 border-b last:border-0 pb-2 last:pb-0">
-                             <div className="w-8 font-mono text-muted-foreground">{p.id}</div>
-                             <div className="flex-1 font-medium">
-                                 {p.lastname} {p.firstname}
-                                 <div className="text-xs text-muted-foreground font-normal">{p.club}</div>
-                             </div>
-                             <Badge variant="outline">{p.weight} kg</Badge>
-                             
-                             <div className="flex items-center gap-3">
-                                 <div className="flex flex-col items-center gap-1">
-                                     <span className="text-[10px] text-muted-foreground uppercase font-bold">Vict.</span>
-                                     <div className="w-16 text-center py-2 bg-muted rounded font-mono font-bold">
-                                         {p.victories ?? 0}
-                                     </div>
-                                 </div>
-                                 <div className="flex flex-col items-center gap-1">
-                                     <span className="text-[10px] text-muted-foreground uppercase font-bold">Pts</span>
-                                     <div className="w-16 text-center py-2 bg-muted rounded font-mono font-bold">
-                                         {p.score ?? 0}
-                                     </div>
-                                 </div>
-                             </div>
-                        </div>
-                    ))}
+                    <CardContent className="grid gap-6">
+                    {(() => {
+                        // 1. Separate Non-HC and HC
+                        const nonHC = participants.filter(p => !p.hors_categorie).sort((a, b) => {
+                            if (b.victories !== a.victories) return b.victories - a.victories
+                            return b.score - a.score
+                        })
+                        const hcList = participants.filter(p => p.hors_categorie).sort((a, b) => {
+                            if (b.victories !== a.victories) return b.victories - a.victories
+                            return b.score - a.score
+                        })
+
+                        // 2. Define sections: [ { title: string, list: Participant[], hasRank: boolean } ]
+                        const sections = []
+                        if (nonHC.length > 0) {
+                            // Calculate ranks for nonHC (Dense Ranking)
+                            let currentRank = 0
+                            let prevVictories = -1
+                            let prevScore = -1
+                            
+                            const listWithRanks = nonHC.map((p) => {
+                                if (p.victories !== prevVictories || p.score !== prevScore) {
+                                    currentRank++
+                                }
+                                prevVictories = p.victories
+                                prevScore = p.score
+                                return { ...p, rank: currentRank }
+                            })
+                            
+                            sections.push({ title: "Classement Officiel", list: listWithRanks, hasRank: true })
+                        }
+                        hcList.forEach((p, idx) => {
+                            sections.push({ title: `Hors Catégorie ${hcList.length > 1 ? idx + 1 : ""}`, list: [p], hasRank: false })
+                        })
+
+                        return sections.map((sec, sIdx) => (
+                            <div key={sIdx} className="space-y-3">
+                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-slate-200 pb-1 flex justify-between items-center">
+                                    <span>{sec.title}</span>
+                                    {sec.list.length > 1 && <span className="lowercase font-normal">({sec.list.length} participants)</span>}
+                                </div>
+                                <div className="grid gap-3">
+                                    {sec.list.map((p: any) => (
+                                                                                                                        <div key={p.id} className={cn(
+                                                                                                                            "flex items-center gap-4 pb-2 last:border-0",
+                                                                                                                            sec.list.length > 1 && "border-b border-slate-100"
+                                                                                                                        )}>
+                                                                                                                            {sec.hasRank && (isFinished || isValidated) && (
+                                                                                                                                <div className={cn(
+                                                                                                                                    "w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shadow-sm shrink-0",
+                                                                                                                                    p.rank === 1 ? "bg-amber-400 text-amber-950" : 
+                                                                                                                                    p.rank === 2 ? "bg-slate-300 text-slate-900" :
+                                                                                                                                    p.rank === 3 ? "bg-orange-300 text-orange-950" : "bg-slate-100 text-slate-500"
+                                                                                                                                )}>
+                                                                                                                                    {p.rank}
+                                                                                                                                </div>
+                                                                                                                            )}
+                                                                                                                            <div className="flex-1 font-medium">
+                                                                                                                                <span className="flex items-center gap-2">
+                                                    {p.firstname} {p.lastname}
+                                                    {p.hors_categorie && <Badge variant="outline" className="text-[8px] h-3 px-1 border-rose-500 text-rose-500 font-black">HC</Badge>}
+                                                </span>
+                                                <div className="text-[10px] text-muted-foreground font-normal">{p.club}</div>
+                                            </div>
+                                            <Badge variant="secondary" className="text-[10px] h-5 bg-slate-100 border-none">{p.weight} kg</Badge>
+                                            
+                                            <div className="flex items-center gap-3">
+                                                <div className="flex flex-col items-center gap-0.5">
+                                                    <span className="text-[8px] text-slate-400 uppercase font-bold">Vict.</span>
+                                                    <div className="w-12 text-center py-1 bg-slate-50 rounded font-mono font-bold text-sm">
+                                                        {p.victories ?? 0}
+                                                    </div>
+                                                </div>
+                                                <div className="flex flex-col items-center gap-0.5">
+                                                    <span className="text-[8px] text-slate-400 uppercase font-bold">Pts</span>
+                                                    <div className="w-12 text-center py-1 bg-slate-50 rounded font-mono font-bold text-sm text-indigo-600">
+                                                        {p.score ?? 0}
+                                                    </div>
+                                                </div>
+                                            </div>
+                                        </div>
+                                    ))}
+                                </div>
+                            </div>
+                        ))
+                    })()}
                 </CardContent>
             </Card>
             )

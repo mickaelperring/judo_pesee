@@ -1,7 +1,8 @@
 import axios from 'axios';
 import { Participant, ParticipantCreate, StatsResponse, PoolAssignment } from '@/types';
 
-const API_URL = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8000';
+// Force relative path for dev/prod consistency via Traefik/Next.js Proxy
+const API_URL = '/api'; 
 
 export const api = axios.create({
   baseURL: API_URL,
@@ -21,6 +22,7 @@ export const generatePools = (category: string) => api.post(`/generate_pools/${c
 export const getStats = () => api.get<StatsResponse>('/stats').then(res => res.data);
 export const getScoreSheetUrl = (category: string, baseUrl?: string) => 
   `${API_URL}/score_sheet/${category}${baseUrl ? `?base_url=${encodeURIComponent(baseUrl)}` : ''}`;
+export const getChronoConfig = () => api.get<Record<string, {match_time: number, osaekomi_time: number}>>('/chrono_config').then(res => res.data);
 
 // Config & Tables
 export const getConfig = (key: string) => api.get<{value: string | null}>(`/configuration/${key}`).then(res => res.data);

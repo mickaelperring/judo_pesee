@@ -1,0 +1,15 @@
+Minimes:
+  match_time: 180
+  osaekomi_time: 20
+Benjamins:
+  match_time: 180
+  osaekomi_time: 20
+Poussins:
+  match_time: 150
+  osaekomi_time: 20
+Mini-Poussins:
+  match_time: 120
+  osaekomi_time: 15
+Moustiques:
+  match_time: 90
+  osaekomi_time: 15

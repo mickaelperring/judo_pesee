@@ -33,14 +33,19 @@ export default function StatsTab() {
                             <TableRow>
                                 <TableHead>Club</TableHead>
                                 <TableHead className="text-right">Inscrits</TableHead>
+                                <TableHead className="text-right">Victoires</TableHead>
                                 <TableHead className="text-right">Points Total</TableHead>
                             </TableRow>
                         </TableHeader>
                         <TableBody>
-                            {stats.by_club.sort((a, b) => b.total_score - a.total_score).map((s) => (
+                            {stats.by_club.sort((a, b) => {
+                                if (b.total_victories !== a.total_victories) return b.total_victories - a.total_victories
+                                return b.total_score - a.total_score
+                            }).map((s) => (
                                 <TableRow key={s.club}>
                                     <TableCell className="font-medium">{s.club}</TableCell>
                                     <TableCell className="text-right">{s.count}</TableCell>
+                                    <TableCell className="text-right">{s.total_victories}</TableCell>
                                     <TableCell className="text-right font-bold">{s.total_score}</TableCell>
                                 </TableRow>
                             ))}
