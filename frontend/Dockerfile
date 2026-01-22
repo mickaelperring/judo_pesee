@@ -7,4 +7,5 @@ RUN npm install
 
 COPY . .
 
+# Dev mode default
 CMD ["npm", "run", "dev"]

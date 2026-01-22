@@ -16,7 +16,7 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-network"
-      - "traefik.http.routers.judo_backend.rule=Host(`judo-pesee.montlebon.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.judo_backend.rule=PathPrefix(`/api`)"
       - "traefik.http.routers.judo_backend.entrypoints=websecure"
       - "traefik.http.routers.judo_backend.tls.certresolver=myresolver"
       - "traefik.http.routers.judo_backend.service=judo_backend_svc"
@@ -30,18 +30,18 @@ services:
     build:
       context: ./frontend
       dockerfile: Dockerfile
-    # ports removed for security, access via Traefik only
+      args:
+        - NEXT_PUBLIC_API_URL=/api
+    # Restore volume for hot-reload in dev
     volumes:
       - ./frontend:/app
       - /app/node_modules
-    environment:
-      - NEXT_PUBLIC_API_URL=/api
     depends_on:
       - backend
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-network"
-      - "traefik.http.routers.judo_frontend.rule=Host(`judo-pesee.montlebon.com`)"
+      - "traefik.http.routers.judo_frontend.rule=PathPrefix(`/`)"
       - "traefik.http.routers.judo_frontend.entrypoints=websecure"
       - "traefik.http.routers.judo_frontend.tls.certresolver=myresolver"
       - "traefik.http.routers.judo_frontend.service=judo_frontend_svc"
