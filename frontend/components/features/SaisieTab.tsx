@@ -121,13 +121,28 @@ export default function SaisieTab({ category }: SaisieTabProps) {
       }
   }
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (!category) return toast.error("Veuillez sélectionner une catégorie")
+    const handleSubmit = async (e: React.FormEvent) => {
 
-    // Uniqueness check (skip if editing same participant, or logic gets complex)
-    // If Creating: check all.
-    // If Editing: check all EXCEPT self.
+      e.preventDefault()
+
+      if (!category) return toast.error("Veuillez sélectionner une catégorie")
+
+      
+
+      const weightNum = parseFloat(weight)
+
+      if (!weight || isNaN(weightNum) || weightNum <= 0) {
+
+        return toast.error("Veuillez saisir un poids valide (supérieur à 0)")
+
+      }
+
+  
+
+      // Uniqueness check
+      // (skip if editing same participant, or logic gets complex)
+      // If Creating: check all.
+      // If Editing: check all EXCEPT self.
     const isDuplicate = participants.some(p => 
       p.id !== editingId && // Ignore self if editing
       p.lastname.toLowerCase().trim() === lastname.toLowerCase().trim() && 
@@ -157,8 +172,10 @@ export default function SaisieTab({ category }: SaisieTabProps) {
           setTimeout(() => setHighlightedId(null), 2000)
           setEditingId(null)
       } else {
-          await createParticipant(baseData as ParticipantCreate)
+          const newParticipant = await createParticipant(baseData as ParticipantCreate)
           toast.success("Participant ajouté")
+          setHighlightedId(newParticipant.id)
+          setTimeout(() => setHighlightedId(null), 2000)
       }
       
       loadData()
@@ -347,7 +364,7 @@ export default function SaisieTab({ category }: SaisieTabProps) {
                 <h2 className="font-semibold">Inscrits ({participants.length})</h2>
                 <p className="text-xs text-muted-foreground">Cliquez pour modifier</p>
             </div>
-            <div className="flex-1 overflow-auto max-h-[500px]">
+            <div className="flex-1 overflow-visible">
                 <Table>
                     <TableHeader>
                         <TableRow>
@@ -361,7 +378,7 @@ export default function SaisieTab({ category }: SaisieTabProps) {
                             <TableRow 
                                 key={p.id} 
                                 className={cn(
-                                    "cursor-pointer hover:bg-muted/50 transition-colors duration-500 border-l-4",
+                                    "cursor-pointer hover:bg-muted/50 transition-colors duration-500 border-l-4 overflow-hidden",
                                     p.sex === 'M' ? "border-l-blue-500" : "border-l-pink-500",
                                     editingId === p.id && "bg-muted",
                                     highlightedId === p.id && "bg-green-100 dark:bg-green-900/40"

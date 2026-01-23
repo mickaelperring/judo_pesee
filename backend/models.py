@@ -49,3 +49,5 @@ class Category(Base):
     id = Column(Integer, primary_key=True, index=True)
     name = Column(String, unique=True, index=True)
     include_in_stats = Column(Boolean, default=True)
+    birth_year_min = Column(Integer, nullable=True)
+    birth_year_max = Column(Integer, nullable=True)

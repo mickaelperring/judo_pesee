@@ -92,6 +92,8 @@ class PoolValidation(BaseModel):
 class CategoryBase(BaseModel):
     name: str
     include_in_stats: bool = True
+    birth_year_min: Optional[int] = None
+    birth_year_max: Optional[int] = None
 
 class CategoryCreate(CategoryBase):
     pass
@@ -99,6 +101,8 @@ class CategoryCreate(CategoryBase):
 class CategoryUpdate(BaseModel):
     name: Optional[str] = None
     include_in_stats: Optional[bool] = None
+    birth_year_min: Optional[int] = None
+    birth_year_max: Optional[int] = None
 
 class Category(CategoryBase):
     id: int

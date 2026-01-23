@@ -53,16 +53,19 @@ migrate_categories_to_db()
 
 @app.get("/categories", response_model=List[str])
 def get_categories(db: Session = Depends(get_db)):
-    cats = db.query(models.Category).all()
+    cats = db.query(models.Category).order_by(models.Category.birth_year_min.asc()).all()
     return [c.name for c in cats]
 
 @app.get("/categories/full", response_model=List[schemas.Category])
 def get_categories_full(db: Session = Depends(get_db)):
-    return db.query(models.Category).order_by(models.Category.name).all()
+    return db.query(models.Category).order_by(models.Category.birth_year_min.asc()).all()
 
 @app.post("/categories", response_model=schemas.Category)
 def create_category(category: schemas.CategoryCreate, db: Session = Depends(get_db)):
-    db_cat = models.Category(**category.dict())
+    data = category.dict()
+    if data.get('birth_year_max') is None:
+        data['birth_year_max'] = data.get('birth_year_min')
+    db_cat = models.Category(**data)
     db.add(db_cat)
     db.commit()
     db.refresh(db_cat)
@@ -73,7 +76,15 @@ def update_category(category_id: int, category_update: schemas.CategoryUpdate, d
     db_cat = db.query(models.Category).filter(models.Category.id == category_id).first()
     if not db_cat:
         raise HTTPException(status_code=404, detail="Category not found")
-    for key, value in category_update.dict(exclude_unset=True).items():
+    
+    update_data = category_update.dict(exclude_unset=True)
+    if 'birth_year_min' in update_data and 'birth_year_max' not in update_data:
+        # If user only updates min, we should probably update max too if they were same? 
+        # For simplicity, if min is provided and max is currently same as old min, update max too.
+        if db_cat.birth_year_max == db_cat.birth_year_min:
+            update_data['birth_year_max'] = update_data['birth_year_min']
+
+    for key, value in update_data.items():
         setattr(db_cat, key, value)
     db.commit()
     db.refresh(db_cat)
@@ -89,19 +100,103 @@ def delete_category(category_id: int, db: Session = Depends(get_db)):
     return {"message": "Category deleted"}
 
 @app.get("/preregistrations", response_model=List[schemas.ParticipantBase])
-def get_preregistrations():
-    # Return pre-registrations. Note: logic might change if we want to search them.
-    # For now, just return all.
+def get_preregistrations(db: Session = Depends(get_db)):
+    # 1. Try to get URL from configuration
+    config = db.query(models.Configuration).filter(models.Configuration.key == "google_sheet_url").first()
+    url = config.value if config and config.value else None
+    
     try:
-        df = pd.read_csv(os.path.join(DATA_DIR, "preregistrations.csv"))
-        # Rename columns to match schema if necessary
-        # Schema: category, firstname, lastname, sex, birth_year, club, weight
-        # CSV: Category, Firstname, Lastname, Sex, BirthYear, Club, Weight
-        df.columns = [c.lower() for c in df.columns]
-        df = df.rename(columns={'birthyear': 'birth_year'})
-        return df.to_dict(orient='records')
+        if url:
+            # Automatic conversion of Google Sheet link to CSV export link
+            if "docs.google.com/spreadsheets" in url:
+                if "/edit" in url:
+                    url = url.split("/edit")[0] + "/export?format=csv"
+                elif "export" not in url:
+                    url = url.rstrip("/") + "/export?format=csv"
+            
+            df = pd.read_csv(url)
+        else:
+            # Fallback to local CSV
+            csv_path = os.path.join(DATA_DIR, "preregistrations.csv")
+            if not os.path.exists(csv_path):
+                return []
+            df = pd.read_csv(csv_path)
+
+        # Normalize columns: remove accents, spaces, special chars
+        import unicodedata
+        def normalize_str(s):
+            s = str(s).lower()
+            s = ''.join(c for c in unicodedata.normalize('NFD', s) if unicodedata.category(c) != 'Mn')
+            return ''.join(e for e in s if e.isalnum())
+
+        df.columns = [normalize_str(c) for c in df.columns]
+        
+        # Mapping variations to our schema
+        mapping = {
+            'firstname': ['prenom', 'prenomjudoka', 'firstname'],
+            'lastname': ['nom', 'nomdujudoka', 'lastname'],
+            'sex': ['sex', 'sexe', 'genre'],
+            'birth_year': ['birthyear', 'anneenaissance', 'datedenaissance', 'datenaissance', 'naissance'],
+            'club': ['club', 'clubdejudorattache', 'association'],
+            'weight': ['weight', 'poids'],
+            'category': ['category', 'categorie']
+        }
+        
+        final_df = pd.DataFrame()
+        
+        for target, variations in mapping.items():
+            for var in variations:
+                normalized_var = normalize_str(var)
+                if normalized_var in df.columns:
+                    final_df[target] = df[normalized_var]
+                    break
+        
+        # Data Cleaning
+        if 'birth_year' in final_df.columns:
+            # If it's a date (DD/MM/YYYY), extract year
+            def extract_year(val):
+                s = str(val)
+                if '/' in s: return s.split('/')[-1]
+                if '-' in s: return s.split('-')[0] if len(s.split('-')[0]) == 4 else s.split('-')[-1]
+                return s
+            final_df['birth_year'] = final_df['birth_year'].apply(extract_year)
+            final_df['birth_year'] = pd.to_numeric(final_df['birth_year'], errors='coerce').fillna(0).astype(int)
+
+        if 'weight' in final_df.columns:
+            # Remove "kg" and other chars
+            final_df['weight'] = final_df['weight'].astype(str).str.replace('kg', '', case=False).str.replace(',', '.')
+            final_df['weight'] = pd.to_numeric(final_df['weight'], errors='coerce').fillna(0)
+
+        if 'sex' in final_df.columns:
+            final_df['sex'] = final_df['sex'].astype(str).str.lower().apply(lambda x: 'F' if 'f' in x else 'M')
+
+        # DEDUCE CATEGORY from birth_year if not present or specifically requested
+        # Fetch all categories with year ranges
+        cat_configs = db.query(models.Category).filter(models.Category.birth_year_min != None).all()
+        
+        def deduce_category(row):
+            year = row.get('birth_year')
+            if not year: return row.get('category', "À classer")
+            
+            for c in cat_configs:
+                # Range check
+                if c.birth_year_min <= year <= (c.birth_year_max or c.birth_year_min):
+                    return c.name
+            
+            return row.get('category', "À classer")
+
+        final_df['category'] = final_df.apply(deduce_category, axis=1)
+
+        # Fill other missing required fields
+        for col in ['firstname', 'lastname', 'club']:
+            if col not in final_df.columns:
+                final_df[col] = ""
+            else:
+                final_df[col] = final_df[col].fillna("")
+
+        return final_df.to_dict(orient='records')
     except Exception as e:
-        print(e)
+        print(f"Error fetching preregistrations: {e}")
         return []
 
 def calculate_stats(participants, fights):
