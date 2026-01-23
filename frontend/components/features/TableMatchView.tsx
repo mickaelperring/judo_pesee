@@ -398,24 +398,9 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         inputClassName="text-center font-mono text-lg"
                                         autoFocus
                                     />
-                                    <label className={cn(
-                                        "flex flex-col items-center gap-1 cursor-pointer transition-opacity",
-                                        !isManualAllowed && effectiveWinner !== "1" && "opacity-30 pointer-events-none"
-                                    )}>
-                                        <input 
-                                            type="radio" 
-                                            name="winner" 
-                                            value="1" 
-                                            checked={effectiveWinner === "1"} 
-                                            onChange={() => setManualWinner("1")}
-                                            disabled={!isManualAllowed}
-                                            className="h-4 w-4" 
-                                        />
-                                        <span className="text-xs">Vainqueur</span>
-                                    </label>
                                 </div>
 
-                                <div className="text-muted-foreground font-bold">VS</div>
+                                <div className="text-muted-foreground font-bold italic">VS</div>
 
                                 {/* Fighter 2 */}
                                 <div className="space-y-2 flex flex-col items-center">
@@ -432,41 +417,71 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         min={0} 
                                         inputClassName="text-center font-mono text-lg"
                                     />
-                                    <label className={cn(
-                                        "flex flex-col items-center gap-1 cursor-pointer transition-opacity",
-                                        !isManualAllowed && effectiveWinner !== "2" && "opacity-30 pointer-events-none"
-                                    )}>
-                                        <input 
-                                            type="radio" 
-                                            name="winner" 
-                                            value="2" 
-                                            checked={effectiveWinner === "2"} 
-                                            onChange={() => setManualWinner("2")}
-                                            disabled={!isManualAllowed}
-                                            className="h-4 w-4" 
-                                        />
-                                        <span className="text-xs">Vainqueur</span>
-                                    </label>
                                 </div>
                             </div>
 
-                            <div className="flex justify-center">
-                                <label className={cn(
-                                    "flex items-center gap-2 cursor-pointer text-sm text-muted-foreground transition-opacity",
-                                    !isManualAllowed && effectiveWinner !== "0" && "opacity-30 pointer-events-none"
-                                )}>
-                                    <input 
-                                        type="radio" 
-                                        name="winner" 
-                                        value="0" 
-                                        checked={effectiveWinner === "0"} 
-                                        onChange={() => setManualWinner("0")}
-                                        disabled={!isManualAllowed}
-                                        className="h-4 w-4" 
-                                    />
-                                    Match nul
-                                </label>
-                            </div>
+                            {/* Segmented Control for 1-1 Manual Arbitration */}
+                            {isManualAllowed && (
+                                <div className="bg-slate-100 dark:bg-slate-900 p-1.5 rounded-2xl flex gap-1.5 shadow-inner border border-slate-200 dark:border-slate-800 w-full max-w-[240px] mx-auto">
+                                    <button
+                                        type="button"
+                                        onClick={() => setManualWinner("1")}
+                                        title={`Vainqueur ${getParticipant(selectedFight.fighter1_id)?.lastname}`}
+                                        className={cn(
+                                            "flex-1 py-3 flex flex-col items-center justify-center rounded-xl transition-all duration-200 gap-0.5",
+                                            manualWinner === "1" 
+                                                ? "bg-white dark:bg-slate-800 shadow-md scale-105 border border-slate-200/50 dark:border-slate-700" 
+                                                : "text-slate-400 opacity-40 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                                        )}
+                                    >
+                                        <Trophy className={cn("h-7 w-7", manualWinner === "1" ? "text-amber-500" : "text-slate-400")} />
+                                        <div className="flex flex-col items-center leading-none">
+                                            <span className="text-[10px] font-bold truncate max-w-full px-1 italic">
+                                                {getParticipant(selectedFight.fighter1_id)?.firstname}
+                                            </span>
+                                            <span className="text-[10px] font-black uppercase truncate max-w-full px-1">
+                                                {getParticipant(selectedFight.fighter1_id)?.lastname}
+                                            </span>
+                                        </div>
+                                    </button>
+                                    
+                                    <button
+                                        type="button"
+                                        onClick={() => setManualWinner("0")}
+                                        title="Match Nul"
+                                        className={cn(
+                                            "flex-1 py-3 flex flex-col items-center justify-center rounded-xl transition-all duration-200 gap-1",
+                                            manualWinner === "0" 
+                                                ? "bg-white dark:bg-slate-800 shadow-md scale-105 border border-slate-200/50 dark:border-slate-700" 
+                                                : "text-slate-400 opacity-40 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                                        )}
+                                    >
+                                        <Scale className={cn("h-7 w-7", manualWinner === "0" ? "text-blue-500" : "text-slate-400")} />
+                                    </button>
+
+                                    <button
+                                        type="button"
+                                        onClick={() => setManualWinner("2")}
+                                        title={`Vainqueur ${getParticipant(selectedFight.fighter2_id)?.lastname}`}
+                                        className={cn(
+                                            "flex-1 py-3 flex flex-col items-center justify-center rounded-xl transition-all duration-200 gap-0.5",
+                                            manualWinner === "2" 
+                                                ? "bg-white dark:bg-slate-800 shadow-md scale-105 border border-slate-200/50 dark:border-slate-700" 
+                                                : "text-slate-400 opacity-40 hover:bg-slate-200/50 dark:hover:bg-slate-800/50"
+                                        )}
+                                    >
+                                        <Trophy className={cn("h-7 w-7", manualWinner === "2" ? "text-amber-500" : "text-slate-400")} />
+                                        <div className="flex flex-col items-center leading-none">
+                                            <span className="text-[10px] font-bold truncate max-w-full px-1 italic">
+                                                {getParticipant(selectedFight.fighter2_id)?.firstname}
+                                            </span>
+                                            <span className="text-[10px] font-black uppercase truncate max-w-full px-1">
+                                                {getParticipant(selectedFight.fighter2_id)?.lastname}
+                                            </span>
+                                        </div>
+                                    </button>
+                                </div>
+                            )}
 
                             <DialogFooter>
                                 <Button type="button" variant="outline" onClick={() => setSelectedFight(null)}>Annuler</Button>

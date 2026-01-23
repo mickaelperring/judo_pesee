@@ -33,10 +33,60 @@ def get_chrono_config():
         config = yaml.safe_load(f)
     return config
 
+def migrate_categories_to_db():
+    db = database.SessionLocal()
+    try:
+        count = db.query(models.Category).count()
+        if count == 0:
+            df = pd.read_csv(os.path.join(DATA_DIR, "categories.csv"))
+            for name in df['Category'].tolist():
+                new_cat = models.Category(name=name, include_in_stats=True)
+                db.add(new_cat)
+            db.commit()
+            print("Categories migrated to DB")
+    except Exception as e:
+        print(f"Migration error: {e}")
+    finally:
+        db.close()
+
+migrate_categories_to_db()
+
 @app.get("/categories", response_model=List[str])
-def get_categories():
-    df = pd.read_csv(os.path.join(DATA_DIR, "categories.csv"))
-    return df['Category'].tolist()
+def get_categories(db: Session = Depends(get_db)):
+    cats = db.query(models.Category).all()
+    return [c.name for c in cats]
+
+@app.get("/categories/full", response_model=List[schemas.Category])
+def get_categories_full(db: Session = Depends(get_db)):
+    return db.query(models.Category).order_by(models.Category.name).all()
+
+@app.post("/categories", response_model=schemas.Category)
+def create_category(category: schemas.CategoryCreate, db: Session = Depends(get_db)):
+    db_cat = models.Category(**category.dict())
+    db.add(db_cat)
+    db.commit()
+    db.refresh(db_cat)
+    return db_cat
+
+@app.put("/categories/{category_id}", response_model=schemas.Category)
+def update_category(category_id: int, category_update: schemas.CategoryUpdate, db: Session = Depends(get_db)):
+    db_cat = db.query(models.Category).filter(models.Category.id == category_id).first()
+    if not db_cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+    for key, value in category_update.dict(exclude_unset=True).items():
+        setattr(db_cat, key, value)
+    db.commit()
+    db.refresh(db_cat)
+    return db_cat
+
+@app.delete("/categories/{category_id}")
+def delete_category(category_id: int, db: Session = Depends(get_db)):
+    db_cat = db.query(models.Category).filter(models.Category.id == category_id).first()
+    if not db_cat:
+        raise HTTPException(status_code=404, detail="Category not found")
+    db.delete(db_cat)
+    db.commit()
+    return {"message": "Category deleted"}
 
 @app.get("/preregistrations", response_model=List[schemas.ParticipantBase])
 def get_preregistrations():
@@ -364,11 +414,17 @@ def download_score_sheet(category: str, base_url: Optional[str] = None, db: Sess
 
 @app.get("/stats")
 def get_stats(db: Session = Depends(get_db)):
-    participants = db.query(models.Participant).all()
+    # 1. Identify categories to include
+    active_cats_objs = db.query(models.Category).filter(models.Category.include_in_stats == True).all()
+    included_cat_names = [c.name for c in active_cats_objs]
+
+    # 2. Get participants only from these categories
+    participants = db.query(models.Participant).filter(models.Participant.category.in_(included_cat_names)).all()
     if not participants:
         return {"by_club": [], "warnings": []}
     
-    fights = db.query(models.Fight).all()
+    # 3. Get fights for these participants
+    fights = db.query(models.Fight).filter(models.Fight.category.in_(included_cat_names)).all()
     stats_map = calculate_stats(participants, fights)
     
     # Enrich participants

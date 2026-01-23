@@ -9,6 +9,10 @@ export const api = axios.create({
 });
 
 export const getCategories = () => api.get<string[]>('/categories').then(res => res.data);
+export const getCategoriesFull = () => api.get<any[]>('/categories/full').then(res => res.data);
+export const createCategory = (data: {name: string, include_in_stats: boolean}) => api.post('/categories', data).then(res => res.data);
+export const updateCategory = (id: number, data: {name?: string, include_in_stats?: boolean}) => api.put(`/categories/${id}`, data).then(res => res.data);
+export const deleteCategory = (id: number) => api.delete(`/categories/${id}`).then(res => res.data);
 export const getPreregistrations = () => api.get<ParticipantCreate[]>('/preregistrations').then(res => res.data);
 export const getParticipants = (category?: string) => 
   api.get<Participant[]>(`/participants${category ? `?category=${category}` : ''}`).then(res => res.data);

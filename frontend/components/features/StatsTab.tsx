@@ -45,8 +45,14 @@ export default function StatsTab() {
                                 <TableRow key={s.club}>
                                     <TableCell className="font-medium">{s.club}</TableCell>
                                     <TableCell className="text-right">{s.count}</TableCell>
-                                    <TableCell className="text-right">{s.total_victories}</TableCell>
-                                    <TableCell className="text-right font-bold">{s.total_score}</TableCell>
+                                    <TableCell className="text-right">
+                                        <div className="font-bold">{s.total_victories}</div>
+                                        <div className="text-[10px] text-muted-foreground">{(s.total_victories / s.count).toFixed(1)} / pers.</div>
+                                    </TableCell>
+                                    <TableCell className="text-right">
+                                        <div className="font-bold">{s.total_score}</div>
+                                        <div className="text-[10px] text-muted-foreground">{(s.total_score / s.count).toFixed(1)} / pers.</div>
+                                    </TableCell>
                                 </TableRow>
                             ))}
                         </TableBody>

@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { 
   DndContext, 
-  closestCenter, 
+  closestCorners, 
   KeyboardSensor, 
   PointerSensor, 
   useSensor, 
@@ -11,7 +11,8 @@ import {
   DragOverlay,
   DragStartEvent, 
   DragEndEvent,
-  DragOverEvent
+  DragOverEvent,
+  defaultDropAnimationSideEffects
 } from "@dnd-kit/core"
 import { 
   SortableContext, 
@@ -112,7 +113,7 @@ function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardD
 }
 
 function TableRow({ id, title, items, isUnassigned = false }: { id: string, title: string, items: PoolCardData[], isUnassigned?: boolean }) {
-    const { setNodeRef } = useSortable({ id, disabled: true }) 
+    const { setNodeRef, isOver } = useSortable({ id, disabled: true }) 
     const tableId = id.replace("table-", "")
     
     // Calculate total fights
@@ -124,13 +125,17 @@ function TableRow({ id, title, items, isUnassigned = false }: { id: string, titl
     }, 0)
     
     return (
-        <div className={cn(
-            "flex flex-col md:flex-row items-start md:items-center gap-4 p-4 border rounded-lg transition-colors",
-            isUnassigned 
-                ? (items.length > 0 ? "bg-amber-500/10 border-amber-500/50 border-dashed border-2 min-h-[120px]" : "bg-muted/20 border-dashed border-2 min-h-[120px]") 
-                : "bg-card shadow-sm min-h-[100px]"
-        )}>
-            <div className="w-32 shrink-0 flex flex-col gap-2">
+        <div 
+            ref={setNodeRef}
+            className={cn(
+                "flex flex-col md:flex-row items-start md:items-center gap-4 p-4 border rounded-lg transition-all duration-200",
+                isUnassigned 
+                    ? (items.length > 0 ? "bg-amber-500/10 border-amber-500/50 border-dashed border-2 min-h-[120px]" : "bg-muted/20 border-dashed border-2 min-h-[120px]") 
+                    : "bg-card shadow-sm min-h-[100px]",
+                isOver && "ring-4 ring-indigo-500/30 border-indigo-500 bg-indigo-500/5 scale-[1.01]"
+            )}
+        >
+            <div className="w-full md:w-32 shrink-0 flex flex-row md:flex-col justify-between items-center md:items-start gap-2">
                 <div className={cn(
                     "font-bold text-sm uppercase tracking-wider flex items-center gap-2",
                     isUnassigned ? "text-muted-foreground" : "text-primary"
@@ -141,20 +146,20 @@ function TableRow({ id, title, items, isUnassigned = false }: { id: string, titl
                     </span>
                 </div>
                 {!isUnassigned && (
-                    <>
-                        <div className="text-xs text-muted-foreground font-medium">
+                    <div className="flex items-center md:flex-col gap-2 md:w-full">
+                        <div className="text-[10px] sm:text-xs text-muted-foreground font-medium">
                             {totalFights} combats
                         </div>
-                        <Button variant="outline" size="sm" className="w-full text-xs h-7" asChild>
+                        <Button variant="outline" size="sm" className="text-xs h-7 px-2" asChild>
                             <Link href={`/table/${tableId}`}>
-                                <ExternalLink className="mr-2 h-3 w-3" /> Ouvrir
+                                <ExternalLink className="mr-1 h-3 w-3" /> Ouvrir
                             </Link>
                         </Button>
-                    </>
+                    </div>
                 )}
             </div>
             
-            <div ref={setNodeRef} className="flex-1 flex flex-wrap gap-2 w-full">
+            <div className="flex-1 flex flex-wrap gap-2 w-full">
                 <SortableContext items={items.map(i => i.uniqueId)} strategy={rectSortingStrategy}>
                     {items.length === 0 && (
                         <div className="text-sm text-muted-foreground/30 italic w-full text-center py-2">
@@ -182,7 +187,7 @@ export default function TableTab() {
     const [isConfigLoaded, setIsConfigLoaded] = useState(false)
 
     const sensors = useSensors(
-        useSensor(PointerSensor, { activationConstraint: { distance: 5 } }),
+        useSensor(PointerSensor, { activationConstraint: { distance: 10 } }),
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     )
 
@@ -551,7 +556,7 @@ export default function TableTab() {
 
             <DndContext
                 sensors={sensors}
-                collisionDetection={closestCenter}
+                collisionDetection={closestCorners}
                 onDragStart={handleDragStart}
                 onDragOver={handleDragOver}
                 onDragEnd={handleDragEnd}

@@ -88,3 +88,20 @@ class PoolValidation(BaseModel):
     pool_number: int
 
     validated: bool = True
+
+class CategoryBase(BaseModel):
+    name: str
+    include_in_stats: bool = True
+
+class CategoryCreate(CategoryBase):
+    pass
+
+class CategoryUpdate(BaseModel):
+    name: Optional[str] = None
+    include_in_stats: Optional[bool] = None
+
+class Category(CategoryBase):
+    id: int
+
+    class Config:
+        from_attributes = True
