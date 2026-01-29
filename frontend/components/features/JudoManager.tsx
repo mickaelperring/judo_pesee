@@ -4,6 +4,7 @@ import { useState, useEffect } from "react"
 import { useRouter, useSearchParams } from "next/navigation"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
+import { Button } from "@/components/ui/button"
 import { getCategories } from "@/lib/api"
 import SaisieTab from "./SaisieTab"
 import PouleTab from "./PouleTab"
@@ -11,6 +12,7 @@ import ScoreTab from "./ScoreTab"
 import StatsTab from "./StatsTab"
 import TableTab from "./TableTab"
 import AdminTab from "./AdminTab"
+import { Database } from "lucide-react"
 
 export default function JudoManager() {
   const router = useRouter()
@@ -52,9 +54,16 @@ export default function JudoManager() {
   return (
     <div className="container mx-auto p-4 max-w-5xl space-y-6">
       <div className="flex flex-col md:flex-row items-center justify-between gap-4 border-b pb-4">
-        <div>
-            <h1 className="text-3xl font-bold tracking-tight">Judo Club Montlebon</h1>
-            <p className="text-muted-foreground">Gestion des inscriptions et poules</p>
+        <div className="flex items-center gap-4">
+            <div>
+                <h1 className="text-3xl font-bold tracking-tight">Judo Club Montlebon</h1>
+                <p className="text-muted-foreground">Gestion des inscriptions et poules</p>
+            </div>
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary mt-1" asChild>
+                <a href="/api/debug/view" target="_blank" rel="noreferrer">
+                    <Database className="h-4 w-4 mr-2" /> Debug DB
+                </a>
+            </Button>
         </div>
         
         {!["table", "stats", "admin"].includes(activeTab) && (
@@ -64,7 +73,7 @@ export default function JudoManager() {
                     <SelectTrigger className="w-[200px]">
                     <SelectValue placeholder="Choisir une catégorie" />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="max-h-[300px]">
                     {categories.map((c) => (
                         <SelectItem key={c} value={c}>
                         {c}
@@ -86,13 +95,13 @@ export default function JudoManager() {
           <TabsTrigger value="admin">Admin</TabsTrigger>
         </TabsList>
         <TabsContent value="saisie" className="mt-6">
-          <SaisieTab key={selectedCategory} category={selectedCategory} />
+          <SaisieTab key={selectedCategory} categoryName={selectedCategory} />
         </TabsContent>
         <TabsContent value="poule" className="mt-6">
-          <PouleTab key={selectedCategory} category={selectedCategory} />
+          <PouleTab key={selectedCategory} categoryName={selectedCategory} />
         </TabsContent>
         <TabsContent value="score" className="mt-6">
-          <ScoreTab key={selectedCategory} category={selectedCategory} />
+          <ScoreTab key={selectedCategory} categoryName={selectedCategory} />
         </TabsContent>
         <TabsContent value="table" className="mt-6">
           <TableTab />

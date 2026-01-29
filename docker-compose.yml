@@ -16,15 +16,14 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-network"
-      - "traefik.http.routers.judo_backend.rule=PathPrefix(`/api`)"
+      - "traefik.http.routers.judo_backend.rule=Host(`judo-pesee.montlebon.com`) && PathPrefix(`/api`)"
+      - "traefik.http.routers.judo_backend.priority=100"
       - "traefik.http.routers.judo_backend.entrypoints=websecure"
       - "traefik.http.routers.judo_backend.tls.certresolver=myresolver"
       - "traefik.http.routers.judo_backend.service=judo_backend_svc"
       - "traefik.http.services.judo_backend_svc.loadbalancer.server.port=8000"
       - "traefik.http.middlewares.api-strip.stripprefix.prefixes=/api"
-      # Security: Basic Auth
-      - "traefik.http.middlewares.judo-auth.basicauth.users=admin:$$apr1$$RMXMwoIi$$aV7ACtlAnUQndVovG6dNG1"
-      - "traefik.http.routers.judo_backend.middlewares=judo-auth,api-strip"
+      - "traefik.http.routers.judo_backend.middlewares=api-strip"
 
   frontend:
     build:
@@ -41,14 +40,13 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-network"
-      - "traefik.http.routers.judo_frontend.rule=PathPrefix(`/`)"
+      - "traefik.http.routers.judo_frontend.rule=Host(`judo-pesee.montlebon.com`) && PathPrefix(`/`)"
       - "traefik.http.routers.judo_frontend.entrypoints=websecure"
       - "traefik.http.routers.judo_frontend.tls.certresolver=myresolver"
       - "traefik.http.routers.judo_frontend.service=judo_frontend_svc"
       - "traefik.http.services.judo_frontend_svc.loadbalancer.server.port=3000"
-      # Security: Basic Auth
-      - "traefik.http.routers.judo_frontend.middlewares=judo-auth"
     networks:
+      - default
       - traefik-network
 
   db:
@@ -77,11 +75,11 @@ services:
     labels:
       - "traefik.enable=true"
       - "traefik.docker.network=traefik-network"
-      - "traefik.http.routers.webdb.rule=Host(`judo-pesee.montlebon.com`) && PathPrefix(`/webdb`)"
+      - "traefik.http.routers.webdb.rule=PathPrefix(`/webdb`)"
       - "traefik.http.routers.webdb.entrypoints=websecure"
       - "traefik.http.routers.webdb.tls.certresolver=myresolver"
       - "traefik.http.services.webdb.loadbalancer.server.port=8080"
-      - "traefik.http.routers.webdb.middlewares=judo-auth,webdb-strip"
+      - "traefik.http.routers.webdb.middlewares=webdb-strip"
       - "traefik.http.middlewares.webdb-strip.stripprefix.prefixes=/webdb"
 
 volumes:

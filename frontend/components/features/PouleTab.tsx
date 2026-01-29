@@ -34,7 +34,7 @@ import Link from "next/link"
 import { Participant } from "@/types"
 
 interface PouleTabProps {
-  category: string
+  categoryName: string
 }
 
 type ItemType = "participant" | "separator"
@@ -136,7 +136,7 @@ function SortableItem({ id, item, minWeight, maxWeight, onToggleHC }: { id: stri
   )
 }
 
-export default function PouleTab({ category }: PouleTabProps) {
+export default function PouleTab({ categoryName }: PouleTabProps) {
   const [items, setItems] = useState<ListItem[]>([])
   const [loading, setLoading] = useState(false)
   const [activeId, setActiveId] = useState<string | null>(null)
@@ -153,7 +153,7 @@ export default function PouleTab({ category }: PouleTabProps) {
   const loadData = useCallback(async () => {
     setLoading(true)
     try {
-      const data = await getParticipants(category)
+      const data = await getParticipants(categoryName)
       // Convert participants to ListItems with separators
       const newItems: ListItem[] = []
       
@@ -174,6 +174,14 @@ export default function PouleTab({ category }: PouleTabProps) {
          }
       })
 
+      // Construct list: Unassigned (if any), then Pools
+      if (unassigned.length > 0) {
+          unassigned.forEach(p => {
+               newItems.push({ id: `p-${p.id}`, type: "participant", data: p })
+          })
+          newItems.push({ id: `sep-unassigned`, type: "separator" })
+      }
+
       // Construct list: Pool 1, Separator, Pool 2, Separator...
       // Sort keys
       const sortedPoolNums = Object.keys(pools).map(Number).sort((a,b) => a-b)
@@ -191,26 +199,16 @@ export default function PouleTab({ category }: PouleTabProps) {
          }
       })
 
-      // Add unassigned at the bottom with a separator if there are existing pools
-      if (unassigned.length > 0) {
-          if (sortedPoolNums.length > 0) {
-              newItems.push({ id: `sep-unassigned`, type: "separator" })
-          }
-          unassigned.forEach(p => {
-               newItems.push({ id: `p-${p.id}`, type: "participant", data: p })
-          })
-      }
-
       setItems(newItems)
     } catch {
       toast.error("Erreur de chargement")
     } finally {
       setLoading(false)
     }
-  }, [category])
+  }, [categoryName])
 
   useEffect(() => {
-    if (category) loadData()
+    if (categoryName) loadData()
     if (typeof window !== "undefined") {
         setBaseUrl(window.location.origin)
     }
@@ -218,7 +216,7 @@ export default function PouleTab({ category }: PouleTabProps) {
     getConfig("active_categories").then(c => {
         if (c.value) setActiveCategories(c.value.split(","))
     })
-  }, [category, loadData])
+  }, [categoryName, loadData])
 
   const { minWeight, maxWeight } = useMemo(() => {
     let min = Infinity
@@ -241,11 +239,15 @@ export default function PouleTab({ category }: PouleTabProps) {
     return items.some(item => item.type === "participant" && item.data?.has_fights)
   }, [items])
 
+  const hasUnassigned = useMemo(() => {
+    return items.some(item => item.type === "separator" && item.id === "sep-unassigned")
+  }, [items])
+
   const handleGenerate = async () => {
      if (!confirm("Attention, cela va écraser les poules actuelles. Continuer ?")) return
      setLoading(true)
      try {
-         await generatePools(category)
+         await generatePools(categoryName)
          await loadData()
          toast.success("Poules générées")
      } catch {
@@ -308,47 +310,66 @@ export default function PouleTab({ category }: PouleTabProps) {
   }
 
   const savePoolConfiguration = async (currentItems: ListItem[]) => {
-      const updates: { id: number, pool_number: number }[] = []
+      const updates: { id: number, pool_number: number | null }[] = []
       
-      // Extract groups of participants separated by separators
-      const groups: ListItem[][] = []
+      const hasUnassignedSep = currentItems.some(i => i.id === 'sep-unassigned')
+      
+      // Separate groups by separators
+      const groups: { type: 'unassigned' | 'pool', items: ListItem[] }[] = []
       let currentGroup: ListItem[] = []
+      let foundUnassignedSeparator = false
       
       currentItems.forEach(item => {
           if (item.type === 'separator') {
-              groups.push(currentGroup)
+              if (item.id === 'sep-unassigned') {
+                  groups.push({ type: 'unassigned', items: currentGroup })
+                  foundUnassignedSeparator = true
+              } else {
+                  // If we have an unassigned sep in the list and haven't reached it, this is unassigned
+                  // If we DON'T have an unassigned sep at all, the first group is a pool
+                  const type = (hasUnassignedSep && !foundUnassignedSeparator) ? 'unassigned' : 'pool'
+                  groups.push({ type, items: currentGroup })
+              }
               currentGroup = []
-          } else if (item.type === 'participant') {
+          } else {
               currentGroup.push(item)
           }
       })
-      groups.push(currentGroup)
+      // Add the last group
+      groups.push({ type: 'pool', items: currentGroup })
       
-      // Assign pool numbers only to non-empty groups (effectively deleting empty pools)
       let poolCounter = 1
-      const nonEmptyGroups = groups.filter(g => g.length > 0)
-
-      nonEmptyGroups.forEach(group => {
-          group.forEach(item => {
-               if (item.data) {
-                   updates.push({ id: item.data.id, pool_number: poolCounter })
-               }
+      groups.forEach(group => {
+          if (group.items.length === 0) return
+          
+          const isUnassigned = group.type === 'unassigned'
+          group.items.forEach(item => {
+              if (item.data) {
+                  updates.push({ 
+                      id: item.data.id, 
+                      pool_number: isUnassigned ? null : poolCounter 
+                  })
+              }
           })
-          poolCounter++
+          if (!isUnassigned) poolCounter++
       })
 
       try {
           await updatePools(updates)
           
-          // Update local state to remove empty separators
+          // Reconstruct optimized items for local state
           const newOptimizedItems: ListItem[] = []
+          const nonEmptyGroups = groups.filter(g => g.items.length > 0)
+          
           nonEmptyGroups.forEach((group, idx) => {
-              group.forEach(item => newOptimizedItems.push(item))
-              // Add separator only between groups
+              group.items.forEach(item => newOptimizedItems.push(item))
+              
               if (idx < nonEmptyGroups.length - 1) {
-                  // Reuse existing separator ID if possible or generate new
-                  // Ideally we should track which separator was where, but regenerating is safer for list integrity
-                  newOptimizedItems.push({ id: `sep-${Date.now()}-${idx}`, type: 'separator' })
+                  const isUnassigned = group.type === 'unassigned'
+                  newOptimizedItems.push({ 
+                      id: isUnassigned ? 'sep-unassigned' : `sep-${Date.now()}-${idx}`, 
+                      type: 'separator' 
+                  })
               }
           })
           
@@ -360,11 +381,11 @@ export default function PouleTab({ category }: PouleTabProps) {
       }
   }
 
-  if (!category) return <div className="p-8 text-center">Sélectionnez une catégorie</div>
+  if (!categoryName) return <div className="p-8 text-center">Sélectionnez une catégorie</div>
 
   return (
     <div className="py-4 space-y-4">
-       {activeCategories.includes(category) && (
+       {activeCategories.includes(categoryName) && (
            <Alert variant="destructive" className="bg-orange-100 border-orange-200 text-orange-800 dark:bg-orange-900/30 dark:border-orange-800 dark:text-orange-300">
                <TriangleAlert className="h-4 w-4 text-orange-600 dark:text-orange-400" />
                <AlertTitle>Attention</AlertTitle>
@@ -386,7 +407,7 @@ export default function PouleTab({ category }: PouleTabProps) {
                </Button>
            </div>
            <Button variant="outline" asChild>
-               <a href={getScoreSheetUrl(category, baseUrl)} target="_blank" rel="noreferrer">
+               <a href={getScoreSheetUrl(categoryName, baseUrl)} target="_blank" rel="noreferrer">
                    <FileDown className="mr-2 h-4 w-4" /> Feuilles de Score (PDF)
                </a>
            </Button>
@@ -402,30 +423,54 @@ export default function PouleTab({ category }: PouleTabProps) {
           >
              <SortableContext items={items.map(i => i.id)} strategy={verticalListSortingStrategy}>
                 <div className="space-y-0.5 pb-20">
-                    {items.map((item, index) => (
-                        <div key={item.id}>
-                            {/* Visual Pool Header for the first item or after separator */}
-                            {(index === 0 || items[index-1].type === "separator") && (
-                                <div className="flex items-center justify-between my-2 pl-2 pr-2">
-                                    <div className="text-[11px] font-bold text-muted-foreground uppercase tracking-widest flex items-center gap-2">
-                                        Poule {items.slice(0, index).filter(i => i.type === "separator").length + 1}
-                                        <span className="normal-case font-normal text-muted-foreground/70">
-                                            ({items.slice(index).findIndex(item => item.type === "separator") === -1 
-                                                ? items.slice(index).length 
-                                                : items.slice(index).findIndex(item => item.type === "separator")
-                                            } participants)
-                                        </span>
+                    {items.map((item, index) => {
+                        const isAfterSeparator = index > 0 && items[index-1].type === "separator"
+                        const isFirst = index === 0
+                        const separatorId = isAfterSeparator ? items[index-1].id : null
+                        
+                        // Header logic
+                        const showHeader = isFirst || isAfterSeparator
+                        const isUnassignedHeader = isFirst && hasUnassigned
+                        
+                        // Calculate pool number correctly (skipping unassigned separator)
+                        const previousSeparators = items.slice(0, index).filter(i => i.type === "separator" && i.id !== "sep-unassigned")
+                        const currentPoolNum = previousSeparators.length + 1
+
+                        return (
+                            <div key={item.id}>
+                                {showHeader && (
+                                    <div className="flex items-center justify-between my-2 pl-2 pr-2">
+                                        <div className={cn(
+                                            "text-[11px] font-bold uppercase tracking-widest flex items-center gap-2",
+                                            isUnassignedHeader ? "text-rose-500" : "text-muted-foreground"
+                                        )}>
+                                            {isUnassignedHeader ? (
+                                                "À assigner (Non classés)"
+                                            ) : (
+                                                <>
+                                                    Poule {currentPoolNum}
+                                                </>
+                                            )}
+                                            <span className="normal-case font-normal text-muted-foreground/70">
+                                                ({items.slice(index).findIndex(item => item.type === "separator") === -1 
+                                                    ? items.slice(index).length 
+                                                    : items.slice(index).findIndex(item => item.type === "separator")
+                                                } participants)
+                                            </span>
+                                        </div>
+                                        {!isUnassignedHeader && (
+                                            <Button variant="ghost" className="h-6 text-[10px] px-2" asChild>
+                                                <Link href={`/score_poule/${encodeURIComponent(categoryName)}/${currentPoolNum}`}>
+                                                    <Edit className="mr-1 h-3 w-3" /> Saisir Scores
+                                                </Link>
+                                            </Button>
+                                        )}
                                     </div>
-                                    <Button variant="ghost" className="h-6 text-[10px] px-2" asChild>
-                                        <Link href={`/score_poule/${encodeURIComponent(category)}/${items.slice(0, index).filter(i => i.type === "separator").length + 1}`}>
-                                            <Edit className="mr-1 h-3 w-3" /> Saisir Scores
-                                        </Link>
-                                    </Button>
-                                </div>
-                            )}
-                            <SortableItem id={item.id} item={item} minWeight={minWeight} maxWeight={maxWeight} onToggleHC={handleToggleHC} />
-                        </div>
-                    ))}
+                                )}
+                                <SortableItem id={item.id} item={item} minWeight={minWeight} maxWeight={maxWeight} onToggleHC={handleToggleHC} />
+                            </div>
+                        )
+                    })}
                 </div>
              </SortableContext>
              <DragOverlay>

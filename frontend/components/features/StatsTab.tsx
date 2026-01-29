@@ -83,13 +83,13 @@ export default function StatsTab() {
                                     </TableRow>
                                 </TableHeader>
                                 <TableBody>
-                                    {stats.warnings.map((p) => (
-                                        <TableRow key={p.id}>
-                                            <TableCell>{p.lastname} {p.firstname}</TableCell>
-                                            <TableCell>{p.category}</TableCell>
-                                            <TableCell>{p.pool_number || "-"}</TableCell>
-                                        </TableRow>
-                                    ))}
+                            {stats.warnings.map((p) => (
+                                <TableRow key={p.id}>
+                                    <TableCell className="font-medium">{p.lastname} {p.firstname}</TableCell>
+                                    <TableCell>{p.category_name}</TableCell>
+                                    <TableCell>{p.club_name}</TableCell>
+                                </TableRow>
+                            ))}
                                 </TableBody>
                             </Table>
                         </div>

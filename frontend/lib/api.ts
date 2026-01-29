@@ -9,11 +9,12 @@ export const api = axios.create({
 });
 
 export const getCategories = () => api.get<string[]>('/categories').then(res => res.data);
-export const getCategoriesFull = () => api.get<any[]>('/categories/full').then(res => res.data);
-export const createCategory = (data: {name: string, include_in_stats: boolean}) => api.post('/categories', data).then(res => res.data);
-export const updateCategory = (id: number, data: {name?: string, include_in_stats?: boolean}) => api.put(`/categories/${id}`, data).then(res => res.data);
+export const getCategoriesFull = () => api.get<Category[]>('/categories/full').then(res => res.data);
+export const createCategory = (data: Partial<Category>) => api.post<Category>('/categories', data).then(res => res.data);
+export const updateCategory = (id: number, data: Partial<Category>) => api.put<Category>(`/categories/${id}`, data).then(res => res.data);
 export const deleteCategory = (id: number) => api.delete(`/categories/${id}`).then(res => res.data);
-export const getPreregistrations = () => api.get<ParticipantCreate[]>('/preregistrations').then(res => res.data);
+
+export const getPreregistrations = () => api.get<any[]>('/preregistrations').then(res => res.data);
 export const getParticipants = (category?: string) => 
   api.get<Participant[]>(`/participants${category ? `?category=${category}` : ''}`).then(res => res.data);
 export const createParticipant = (data: ParticipantCreate) => api.post<Participant>('/participants', data).then(res => res.data);
@@ -21,8 +22,9 @@ export const updateParticipant = (id: number, data: Partial<Participant>) => api
 export const deleteParticipant = (id: number) => api.delete(`/participants/${id}`).then(res => res.data);
 export const updatePools = (updates: { id: number; pool_number: number }[]) => 
   api.put('/participants/batch/update_pools', updates).then(res => res.data);
-export const getClubs = () => api.get<string[]>('/clubs').then(res => res.data);
+export const getClubs = () => api.get<Club[]>('/clubs').then(res => res.data);
 export const generatePools = (category: string) => api.post(`/generate_pools/${category}`).then(res => res.data);
+
 export const getStats = () => api.get<StatsResponse>('/stats').then(res => res.data);
 export const getScoreSheetUrl = (category: string, baseUrl?: string) => 
   `${API_URL}/score_sheet/${category}${baseUrl ? `?base_url=${encodeURIComponent(baseUrl)}` : ''}`;
@@ -33,8 +35,8 @@ export const getConfig = (key: string) => api.get<{value: string | null}>(`/conf
 export const updateConfig = (key: string, value: string) => api.post('/configuration', { key, value }).then(res => res.data);
 export const getPoolAssignments = () => api.get<PoolAssignment[]>(`/pool_assignments?_t=${Date.now()}`).then(res => res.data);
 export const updatePoolAssignments = (assignments: Omit<PoolAssignment, 'id'>[]) => api.post('/pool_assignments/batch', assignments).then(res => res.data);
-export const validatePool = (category: string, poolNumber: number, validated: boolean) => 
-  api.post('/pool_assignments/validate', { category, pool_number: poolNumber, validated }).then(res => res.data);
+export const validatePool = (categoryId: number, poolNumber: number, validated: boolean) => 
+  api.post('/pool_assignments/validate', { category_id: categoryId, pool_number: poolNumber, validated }).then(res => res.data);
 
 // Fights
 export const getFights = (category?: string, poolNumber?: number) => 

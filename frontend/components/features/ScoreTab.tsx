@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from "react"
 import { getParticipants, getFights, getPoolAssignments, validatePool } from "@/lib/api"
 import { getPairings } from "@/lib/pairings"
+import { getPoolStatus, formatParticipantName, sortParticipantsByRank } from "@/lib/judo"
 import { Input } from "@/components/ui/input"
 import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,10 +14,10 @@ import { cn } from "@/lib/utils"
 import { Trophy } from "lucide-react"
 
 interface ScoreTabProps {
-  category: string
+  categoryName: string
 }
 
-export default function ScoreTab({ category }: ScoreTabProps) {
+export default function ScoreTab({ categoryName }: ScoreTabProps) {
   const [pools, setPools] = useState<Record<number, Participant[]>>({})
   const [finishedPools, setFinishedPools] = useState<Set<number>>(new Set())
   const [validatedPools, setValidatedPools] = useState<Set<number>>(new Set())
@@ -26,15 +27,17 @@ export default function ScoreTab({ category }: ScoreTabProps) {
     setLoading(true)
     try {
       const [data, fightsData, assignments] = await Promise.all([
-          getParticipants(category),
-          getFights(category),
+          getParticipants(categoryName),
+          getFights(categoryName),
           getPoolAssignments()
       ])
 
       // Process Validation Status
       const validated = new Set<number>()
+      const finished = new Set<number>()
+
       assignments.forEach(a => {
-          if (a.category.trim().toLowerCase() === category.trim().toLowerCase() && a.validated) {
+          if (a.category_name?.trim().toLowerCase() === categoryName.trim().toLowerCase() && a.validated) {
               validated.add(a.pool_number)
           }
       })
@@ -49,32 +52,12 @@ export default function ScoreTab({ category }: ScoreTabProps) {
       setPools(grouped)
 
       // Logic to determine finished pools
-      const finished = new Set<number>()
       Object.keys(grouped).forEach(poolNumStr => {
           const poolNum = parseInt(poolNumStr)
           if (poolNum === 0) return
-
           const poolParticipants = grouped[poolNum]
-          if (poolParticipants.length < 2) return
-
-          // Generate pairings for this pool
-          // Use the same sort logic as TableMatchView
-          const sortedPoolParticipants = [...poolParticipants].sort((a, b) => a.weight - b.weight)
-          const n = sortedPoolParticipants.length
-          const pairings = getPairings(n)
-
-          // Check if all expected pairings have a corresponding fight
-          const allPlayed = pairings.every(pair => {
-              const p1Id = sortedPoolParticipants[pair[0] - 1].id
-              const p2Id = sortedPoolParticipants[pair[1] - 1].id
-              
-              return fightsData.some(f => 
-                  ((f.fighter1_id === p1Id && f.fighter2_id === p2Id) || 
-                   (f.fighter1_id === p2Id && f.fighter2_id === p1Id))
-              )
-          })
-
-          if (allPlayed) {
+          const { status } = getPoolStatus(poolParticipants, fightsData)
+          if (status === "finished") {
               finished.add(poolNum)
           }
       })
@@ -85,16 +68,23 @@ export default function ScoreTab({ category }: ScoreTabProps) {
     } finally {
       setLoading(false)
     }
-  }, [category])
+  }, [categoryName])
 
   useEffect(() => {
-    if (category) loadData()
-  }, [category, loadData])
+    if (categoryName) loadData()
+  }, [categoryName, loadData])
 
   const handleValidate = async (poolNum: number) => {
       if (!confirm("Confirmer que le podium a été fait pour cette poule ?")) return
+      
+      const poolParticipants = pools[poolNum] || []
+      const firstParticipant = poolParticipants[0]
+      if (!firstParticipant || !firstParticipant.category_id) {
+          return toast.error("Impossible de déterminer la catégorie")
+      }
+
       try {
-          await validatePool(category, poolNum, true)
+          await validatePool(firstParticipant.category_id, poolNum, true)
           toast.success("Poule validée")
           loadData()
       } catch {
@@ -102,7 +92,7 @@ export default function ScoreTab({ category }: ScoreTabProps) {
       }
   }
 
-  if (!category) return <div className="p-8 text-center">Sélectionnez une catégorie</div>
+  if (!categoryName) return <div className="p-8 text-center">Sélectionnez une catégorie</div>
 
   // Sorting Logic
   // 1. Finished & NOT Validated
@@ -181,69 +171,64 @@ export default function ScoreTab({ category }: ScoreTabProps) {
                         </CardTitle>
                     </CardHeader>
                     <CardContent className="grid gap-6">
-                    {(() => {
-                        // 1. Separate Non-HC and HC
-                        const nonHC = participants.filter(p => !p.hors_categorie).sort((a, b) => {
-                            if (b.victories !== a.victories) return b.victories - a.victories
-                            return b.score - a.score
-                        })
-                        const hcList = participants.filter(p => p.hors_categorie).sort((a, b) => {
-                            if (b.victories !== a.victories) return b.victories - a.victories
-                            return b.score - a.score
-                        })
-
-                        // 2. Define sections: [ { title: string, list: Participant[], hasRank: boolean } ]
-                        const sections = []
-                        if (nonHC.length > 0) {
-                            // Calculate ranks for nonHC (Dense Ranking)
-                            let currentRank = 0
-                            let prevVictories = -1
-                            let prevScore = -1
-                            
-                            const listWithRanks = nonHC.map((p) => {
-                                if (p.victories !== prevVictories || p.score !== prevScore) {
-                                    currentRank++
-                                }
-                                prevVictories = p.victories
-                                prevScore = p.score
-                                return { ...p, rank: currentRank }
-                            })
-                            
-                            sections.push({ title: "Classement Officiel", list: listWithRanks, hasRank: true })
-                        }
-                        hcList.forEach((p, idx) => {
-                            sections.push({ title: `Hors Catégorie ${hcList.length > 1 ? idx + 1 : ""}`, list: [p], hasRank: false })
-                        })
-
-                        return sections.map((sec, sIdx) => (
-                            <div key={sIdx} className="space-y-3">
-                                <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-slate-200 pb-1 flex justify-between items-center">
-                                    <span>{sec.title}</span>
-                                    {sec.list.length > 1 && <span className="lowercase font-normal">({sec.list.length} participants)</span>}
-                                </div>
-                                <div className="grid gap-3">
-                                    {sec.list.map((p: any) => (
-                                                                                                                        <div key={p.id} className={cn(
-                                                                                                                            "flex items-center gap-4 pb-2 last:border-0",
-                                                                                                                            sec.list.length > 1 && "border-b border-slate-100"
-                                                                                                                        )}>
-                                                                                                                            {sec.hasRank && (isFinished || isValidated) && (
-                                                                                                                                <div className={cn(
-                                                                                                                                    "w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shadow-sm shrink-0",
-                                                                                                                                    p.rank === 1 ? "bg-amber-400 text-amber-950" : 
-                                                                                                                                    p.rank === 2 ? "bg-slate-300 text-slate-900" :
-                                                                                                                                    p.rank === 3 ? "bg-orange-300 text-orange-950" : "bg-slate-100 text-slate-500"
-                                                                                                                                )}>
-                                                                                                                                    {p.rank}
-                                                                                                                                </div>
-                                                                                                                            )}
-                                                                                                                            <div className="flex-1 font-medium">
-                                                                                                                                <span className="flex items-center gap-2">
-                                                    {p.firstname} {p.lastname}
-                                                    {p.hors_categorie && <Badge variant="outline" className="text-[8px] h-3 px-1 border-rose-500 text-rose-500 font-black">HC</Badge>}
-                                                </span>
-                                                <div className="text-[10px] text-muted-foreground font-normal">{p.club}</div>
-                                            </div>
+                                        {(() => {
+                                            // 1. Separate Non-HC and HC
+                                            const nonHC = sortParticipantsByRank(participants.filter(p => !p.hors_categorie))
+                                            const hcList = sortParticipantsByRank(participants.filter(p => p.hors_categorie))
+                    
+                                            // 2. Define sections: [ { title: string, list: Participant[], hasRank: boolean } ]
+                                            const sections = []
+                                            if (nonHC.length > 0) {
+                                                // Calculate ranks for nonHC (Dense Ranking)
+                                                let currentRank = 0
+                                                let prevVictories = -1
+                                                let prevScore = -1
+                                                
+                                                const listWithRanks = nonHC.map((p) => {
+                                                    if (p.victories !== prevVictories || p.score !== prevScore) {
+                                                        currentRank++
+                                                    }
+                                                    prevVictories = p.victories
+                                                    prevScore = p.score
+                                                    return { ...p, rank: currentRank }
+                                                })
+                                                
+                                                sections.push({ title: "Classement Officiel", list: listWithRanks, hasRank: true })
+                                            }
+                                            hcList.forEach((p, idx) => {
+                                                sections.push({ title: `Hors Catégorie ${hcList.length > 1 ? idx + 1 : ""}`, list: [p], hasRank: false })
+                                            })
+                    
+                                            return sections.map((sec, sIdx) => (
+                                                <div key={sIdx} className="space-y-3">
+                                                    <div className="text-[10px] font-black uppercase tracking-widest text-slate-500 border-b border-slate-200 pb-1 flex justify-between items-center">
+                                                        <span>{sec.title}</span>
+                                                        {sec.list.length > 1 && <span className="lowercase font-normal">({sec.list.length} participants)</span>}
+                                                    </div>
+                                                    <div className="grid gap-3">
+                                                        {sec.list.map((p: any) => (
+                                                            <div key={p.id} className={cn(
+                                                                "flex items-center gap-4 pb-2 last:border-0",
+                                                                sec.list.length > 1 && "border-b border-slate-100"
+                                                            )}>
+                                                                {sec.hasRank && (isFinished || isValidated) && (
+                                                                    <div className={cn(
+                                                                        "w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shadow-sm shrink-0",
+                                                                        p.rank === 1 ? "bg-amber-400 text-amber-950" : 
+                                                                        p.rank === 2 ? "bg-slate-300 text-slate-900" :
+                                                                        p.rank === 3 ? "bg-orange-300 text-orange-950" : "bg-slate-100 text-slate-500"
+                                                                    )}>
+                                                                        {p.rank}
+                                                                    </div>
+                                                                )}
+                                                                <div className="flex-1 font-medium">
+                                                                    <span className="flex items-center gap-2">
+                                                                        {formatParticipantName(p)}
+                                                                        {p.hors_categorie && <Badge variant="outline" className="text-[8px] h-3 px-1 border-rose-500 text-rose-500 font-black">HC</Badge>}
+                                                                    </span>
+                                                                    <div className="text-[10px] text-muted-foreground font-normal">{p.club_name}</div>
+                                                                </div>
+                    
                                             <Badge variant="secondary" className="text-[10px] h-5 bg-slate-100 border-none">{p.weight} kg</Badge>
                                             
                                             <div className="flex items-center gap-3">

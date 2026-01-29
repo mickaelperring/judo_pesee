@@ -1,52 +1,69 @@
-import random
-from sqlalchemy.orm import Session
-from database import SessionLocal, engine
 import models
-
-# Ensure tables exist
-models.Base.metadata.create_all(bind=engine)
+import database
+import random
 
 def populate():
-    db = SessionLocal()
-    
-    categories = ["Benjamins", "Poussins", "Moustiques"]
-    clubs = ["Judo Club Montlebon", "Judo Club Pontarlier", "Dojo Franc-Comtois", "Judo Club Morteau", "Val de Morteau"]
-    firstnames = ["Lucas", "Leo", "Louis", "Gabriel", "Jules", "Adam", "Arthur", "Thomas", "Emma", "Jade", "Louise", "Alice", "Chloé", "Lina", "Lea", "Mila"]
-    lastnames = ["Martin", "Bernard", "Thomas", "Petit", "Robert", "Richard", "Durand", "Dubois", "Moreau", "Laurent", "Simon", "Michel", "Lefebvre"]
-    
-    participants = []
-    
-    for category in categories:
-        for _ in range(30):
-            sex = random.choice(["M", "F"])
-            # Adjust weight range slightly by category for realism
-            if category == "Moustiques":
-                weight = random.uniform(18, 30)
-                year = 2018
-            elif category == "Poussins":
-                weight = random.uniform(25, 40)
-                year = 2016
-            else: # Benjamins
-                weight = random.uniform(30, 55)
-                year = 2014
-                
-            p = models.Participant(
-                category=category,
-                firstname=random.choice(firstnames),
-                lastname=random.choice(lastnames),
-                sex=sex,
-                birth_year=year,
-                club=random.choice(clubs),
-                weight=round(weight, 1),
-                pool_number=None,
-                score=None
-            )
-            participants.append(p)
-            
+    db = database.SessionLocal()
     try:
-        db.add_all(participants)
+        # 1. Get existing categories
+        categories = db.query(models.Category).all()
+        if not categories:
+            print("No categories found. Please create some first.")
+            return
+
+        # 2. Ensure we have some clubs
+        club_names = ["Judo Club Montlebon", "Dojo du Haut-Doubs", "Morteau Judo", "Pontarlier Arts Martiaux", "Val de Morteau Judo"]
+        clubs = []
+        for name in club_names:
+            club = db.query(models.Club).filter(models.Club.name == name).first()
+            if not club:
+                club = models.Club(name=name)
+                db.add(club)
+                db.flush()
+            clubs.append(club)
+
+        # 3. Dummy names components
+        firstnames_m = ["Léo", "Lucas", "Noah", "Gabriel", "Adam", "Arthur", "Louis", "Jules", "Maël", "Liam"]
+        firstnames_f = ["Emma", "Mila", "Chloé", "Alice", "Lina", "Léa", "Mia", "Jade", "Manon", "Rose"]
+        lastnames = ["Martin", "Bernard", "Thomas", "Petit", "Robert", "Richard", "Durand", "Dubois", "Moreau", "Laurent", "Simon", "Michel", "Lefebvre", "Garcia", "David"]
+
+        added_count = 0
+        for cat in categories:
+            # Generate 50 participants per category
+            num_to_add = 50
+            
+            # Determine suitable birth year for this category
+            y_min = cat.birth_year_min or 2010
+            y_max = cat.birth_year_max or y_min
+            
+            for _ in range(num_to_add):
+                sex = random.choice(["M", "F"])
+                fname = random.choice(firstnames_m if sex == "M" else firstnames_f)
+                lname = random.choice(lastnames)
+                
+                # Check for duplicate
+                exists = db.query(models.Participant).filter(
+                    models.Participant.firstname == fname,
+                    models.Participant.lastname == lname,
+                    models.Participant.category_id == cat.id
+                ).first()
+                
+                if not exists:
+                    p = models.Participant(
+                        firstname=fname,
+                        lastname=lname,
+                        sex=sex,
+                        birth_year=random.randint(y_min, y_max),
+                        weight=round(random.uniform(20.0, 60.0), 1),
+                        category_id=cat.id,
+                        club_id=random.choice(clubs).id,
+                        hors_categorie=False
+                    )
+                    db.add(p)
+                    added_count += 1
+        
         db.commit()
-        print(f"Successfully added {len(participants)} participants.")
+        print(f"Successfully added {added_count} dummy participants across {len(categories)} categories.")
     except Exception as e:
         print(f"Error: {e}")
         db.rollback()

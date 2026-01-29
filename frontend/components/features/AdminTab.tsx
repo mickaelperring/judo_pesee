@@ -46,7 +46,21 @@ export default function AdminTab() {
             getCategoriesFull()
         ])
         if (confTables.value) setTableCount(confTables.value)
-        if (confActive.value) setActiveCategories(confActive.value.split(","))
+        
+        if (confActive.value) {
+            const rawActive = confActive.value.split(",")
+            // Normalize active categories against existing ones (case-insensitive match)
+            const validActive = rawActive.map(a => {
+                const match = allCats.find(c => c.name.toLowerCase() === a.toLowerCase().trim())
+                return match ? match.name : null
+            }).filter((n): n is string => n !== null)
+            
+            // If some active cats were not found or casing was different, we might want to update immediately?
+            // For now just setting state correctly ensures checkboxes appear checked.
+            // Next save will fix the config string.
+            setActiveCategories(validActive)
+        }
+        
         if (confSheet.value) setGoogleSheetUrl(confSheet.value)
         setCategories(allCats)
     } catch {

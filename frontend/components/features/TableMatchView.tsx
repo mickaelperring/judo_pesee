@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { NumberInput } from "@/components/ui/number-input"
 import { cn } from "@/lib/utils"
 import { getPairings } from "@/lib/pairings"
+import { getPoolStatus, formatParticipantName, PoolStatus } from "@/lib/judo"
 import { Participant, Fight, PoolAssignment } from "@/types"
 import { Loader2, Trophy, ArrowLeft, Scale } from "lucide-react"
 import Link from "next/link"
@@ -44,8 +45,12 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
 
             // 2. Assignments
             const allAssignments = await getPoolAssignments()
+            const normalizedActiveCats = activeCats.map(c => c.trim().toLowerCase())
+            
             const tableAssignments = allAssignments.filter(a => 
-                a.table_number === parseInt(tableId) && activeCats.includes(a.category)
+                a.table_number === parseInt(tableId) && 
+                a.category_name && 
+                normalizedActiveCats.includes(a.category_name.trim().toLowerCase())
             ).sort((a, b) => a.order - b.order)
             setPools(tableAssignments)
 
@@ -74,7 +79,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
         const poolFights = await getFights(category, poolNumber)
         
         // Compute active participants for this pool
-        const poolParticipants = participants.filter(p => p.category === category && p.pool_number === poolNumber)
+        const poolParticipants = participants.filter(p => p.category_name === category && p.pool_number === poolNumber)
         
         // Sort for pairing generation
         const sortedPoolParticipants = sortParticipantsForPairing(poolParticipants)
@@ -128,12 +133,13 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     }
 
     const handlePoolClick = (p: PoolAssignment) => {
-        const key = `${p.category}-${p.pool_number}`
+        const catName = p.category_name || ""
+        const key = `${catName}-${p.pool_number}`
         if (activePool === key) {
             setActivePool(null) // Collapse
         } else {
             setActivePool(key)
-            loadActivePoolFights(p.category, p.pool_number)
+            loadActivePoolFights(catName, p.pool_number)
         }
     }
 
@@ -180,8 +186,6 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                     score1: score1,
                     score2: score2,
                     winner_id: winnerId,
-                    // Ensure we send required fields for creation
-                    category: selectedFight.category,
                     fighter1_id: selectedFight.fighter1_id,
                     fighter2_id: selectedFight.fighter2_id
                 }
@@ -231,33 +235,10 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                 {pools.length === 0 && <div className="text-center text-muted-foreground py-8">Aucun match assigné.</div>}
                 
                 {pools.map(pool => {
-                    const isActive = activePool === `${pool.category}-${pool.pool_number}`
-                    const poolParticipants = participants.filter(p => p.category === pool.category && p.pool_number === pool.pool_number)
+                    const isActive = activePool === `${pool.category_name}-${pool.pool_number}`
+                    const poolParticipants = participants.filter(p => p.category_id === pool.category_id && p.pool_number === pool.pool_number)
                     
-                    // Determine Status
-                    let status = "not_started"
-                    if (pool.validated) {
-                        status = "validated"
-                    } else if (poolParticipants.length >= 2) {
-                        const sortedP = [...poolParticipants].sort((a, b) => a.weight - b.weight)
-                        const pairings = getPairings(sortedP.length)
-                        
-                        let playedCount = 0
-                        pairings.forEach(pair => {
-                            const p1 = sortedP[pair[0]-1]
-                            const p2 = sortedP[pair[1]-1]
-                            const fight = allFights.find(f => 
-                                f.winner_id !== null &&
-                                ((f.fighter1_id === p1.id && f.fighter2_id === p2.id) || 
-                                 (f.fighter1_id === p2.id && f.fighter2_id === p1.id))
-                            )
-                            if (fight) playedCount++
-                        })
-
-                        if (playedCount > 0) {
-                            status = playedCount === pairings.length ? "finished" : "in_progress"
-                        }
-                    }
+                    const { status } = getPoolStatus(poolParticipants, allFights, pool)
 
                     const statusStyles = {
                         not_started: isActive ? "bg-muted/50" : "hover:bg-muted/20",
@@ -279,7 +260,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                             >
                                 <CardHeader className="p-4">
                                     <div className="flex justify-between items-center">
-                                        <CardTitle className="text-base">{pool.category} - Poule {pool.pool_number}</CardTitle>
+                                        <CardTitle className="text-base">{pool.category_name} - Poule {pool.pool_number}</CardTitle>
                                         <Badge variant="secondary">{poolParticipants.length} combattants</Badge>
                                     </div>
                                     <div className="text-xs text-muted-foreground">
@@ -317,10 +298,10 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                                 isSaved && fight.winner_id !== p1.id && !isDraw ? "text-red-600/50" : "text-red-600"
                                                             )}>
                                                                 {fight.winner_id === p1.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
-                                                                <span className="truncate">{p1.firstname} {p1.lastname}</span>
+                                                                <span className="truncate">{formatParticipantName(p1)}</span>
                                                                 {p1.hors_categorie && <Badge variant="outline" className="text-[8px] h-3 px-1 border-rose-500 text-rose-500 font-black">HC</Badge>}
                                                             </div>
-                                                            <div className="text-[10px] text-muted-foreground">{p1.club} {p1.hors_categorie && "(HC)"}</div>
+                                                            <div className="text-[10px] text-muted-foreground">{p1.club_name} {p1.hors_categorie && "(HC)"}</div>
                                                             <div className="text-[10px] text-muted-foreground">V: {p1.victories} - P: {p1.score}</div>
                                                         </div>
                                                         
@@ -332,11 +313,11 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
 
                                                         <div className="flex-1 text-left">
                                                             <div className="flex items-center justify-start gap-1 font-semibold">
-                                                                <span className="truncate">{p2.firstname} {p2.lastname}</span>
+                                                                <span className="truncate">{formatParticipantName(p2)}</span>
                                                                 {p2.hors_categorie && <Badge variant="outline" className="text-[8px] h-3 px-1 border-indigo-500 text-indigo-500 font-black">HC</Badge>}
                                                                 {fight.winner_id === p2.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
                                                             </div>
-                                                            <div className="text-[10px] text-muted-foreground">{p2.club} {p2.hors_categorie && "(HC)"}</div>
+                                                            <div className="text-[10px] text-muted-foreground">{p2.club_name} {p2.hors_categorie && "(HC)"}</div>
                                                             <div className="text-[10px] text-muted-foreground">V: {p2.victories} - P: {p2.score}</div>
                                                         </div>
                                                     </div>

@@ -25,6 +25,7 @@ import { CSS } from "@dnd-kit/utilities"
 
 import { getParticipants, getPoolAssignments, updatePoolAssignments, getConfig, getFights } from "@/lib/api"
 import { getPairings } from "@/lib/pairings"
+import { getPoolStatus, PoolStatus, formatParticipantName } from "@/lib/judo"
 import { toast } from "sonner"
 import { cn } from "@/lib/utils"
 import { Button } from "@/components/ui/button"
@@ -38,11 +39,12 @@ import Link from "next/link"
 interface PoolCardData {
     uniqueId: string // "cat-pool"
     category: string
+    categoryId: number
     poolNumber: number
     participantCount: number
     label: string
     participants: string[]
-    status: "not_started" | "in_progress" | "finished" | "validated"
+    status: PoolStatus
     playedCount: number
     totalFights: number
 }
@@ -191,27 +193,21 @@ export default function TableTab() {
         useSensor(KeyboardSensor, { coordinateGetter: sortableKeyboardCoordinates })
     )
 
-    // Initial Load
-    useEffect(() => {
-        Promise.all([
-            getConfig("active_categories"),
-            getConfig("table_count")
-        ]).then(([confActive, confTable]) => {
-            if (confActive.value) setActiveCategories(confActive.value.split(","))
-            if (confTable.value) setTableCount(parseInt(confTable.value))
-            setIsConfigLoaded(true)
-        })
-    }, [])
-
     const loadBoard = useCallback(async () => {
         try {
             // Fetch Config Fresh
-            const confActive = await getConfig("active_categories")
+            const [confActive, confTable] = await Promise.all([
+                getConfig("active_categories"),
+                getConfig("table_count")
+            ])
+            
             const activeCats = confActive.value ? confActive.value.split(",") : []
+            const tCount = confTable.value ? parseInt(confTable.value) : 5
+            
             setActiveCategories(activeCats)
+            setTableCount(tCount)
 
             if (activeCats.length === 0) {
-                 toast.warning("Aucune catégorie active trouvée")
                  setColumns({})
                  return
             }
@@ -231,16 +227,19 @@ export default function TableTab() {
             
             allParticipants.forEach(p => {
                 if (!p.pool_number) return
-                if (!normalizedActiveCats.includes(p.category.trim().toLowerCase())) return
+                // Robust check for category name
+                const catName = p.category_name || (typeof p.category_id === 'number' ? `Cat ${p.category_id}` : "")
+                if (!catName || !normalizedActiveCats.includes(catName.trim().toLowerCase())) return
 
-                const key = `${p.category}::${p.pool_number}`
+                const key = `${catName}::${p.pool_number}`
                 if (!poolsMap[key]) {
                     poolsMap[key] = {
                         uniqueId: key,
-                        category: p.category,
+                        category: catName,
+                        categoryId: p.category_id,
                         poolNumber: p.pool_number,
                         participantCount: 0,
-                        label: `${p.category} - P${p.pool_number}`,
+                        label: `${catName} - P${p.pool_number}`,
                         participants: [],
                         status: "not_started",
                         playedCount: 0,
@@ -252,56 +251,20 @@ export default function TableTab() {
             })
 
             // 2. Determine status for each pool
-            // Optimize: Create a set of played pairings for O(1) lookup
-            const playedPairings = new Set<string>()
-            allFights.forEach(f => {
-                // Any fight in the DB is considered played (0-0 are deleted)
-                const p1 = Math.min(f.fighter1_id, f.fighter2_id)
-                const p2 = Math.max(f.fighter1_id, f.fighter2_id)
-                playedPairings.add(`${p1}-${p2}`)
-            })
-
             Object.keys(poolsMap).forEach(key => {
-                const pool = poolsMap[key]
-                const assignment = allAssignments.find(a => a.category === pool.category && a.pool_number === pool.poolNumber)
+                const poolData = poolsMap[key]
+                const poolParticipants = allParticipants.filter(p => p.category_name === poolData.category && p.pool_number === poolData.poolNumber)
+                const assignment = allAssignments.find(a => a.category_name === poolData.category && a.pool_number === poolData.poolNumber)
                 
-                if (assignment?.validated) {
-                    pool.status = "validated"
-                } else {
-                    const poolParticipants = allParticipants.filter(p => p.category === pool.category && p.pool_number === pool.poolNumber)
-                    const n = poolParticipants.length
-                    if (n < 2) {
-                        pool.status = "not_started"
-                    } else {
-                        const sortedP = [...poolParticipants].sort((a, b) => a.weight - b.weight)
-                        const pairings = getPairings(n)
-                        
-                        let playedCount = 0
-                        pairings.forEach(pair => {
-                            const p1Obj = sortedP[pair[0]-1]
-                            const p2Obj = sortedP[pair[1]-1]
-                            if (!p1Obj || !p2Obj) return
-
-                            const id1 = Math.min(p1Obj.id, p2Obj.id)
-                            const id2 = Math.max(p1Obj.id, p2Obj.id)
-                            
-                            if (playedPairings.has(`${id1}-${id2}`)) {
-                                playedCount++
-                            }
-                        })
-
-                        pool.playedCount = playedCount
-                        pool.totalFights = pairings.length
-
-                        if (playedCount === 0) pool.status = "not_started"
-                        else if (playedCount === pairings.length) pool.status = "finished"
-                        else pool.status = "in_progress"
-                    }
-                }
+                const { status, playedCount, totalFights } = getPoolStatus(poolParticipants, allFights, assignment)
+                
+                poolData.status = status
+                poolData.playedCount = playedCount
+                poolData.totalFights = totalFights
             })
 
             const assignments = allAssignments.filter(a => 
-                normalizedActiveCats.includes(a.category.trim().toLowerCase())
+                a.category_name && normalizedActiveCats.includes(a.category_name.trim().toLowerCase())
             )
             
             const cols: Record<string, PoolCardData[]> = {}
@@ -315,7 +278,7 @@ export default function TableTab() {
             assignments.sort((a, b) => a.order - b.order)
 
             assignments.forEach(a => {
-                const key = `${a.category}::${a.pool_number}`
+                const key = `${a.category_name}::${a.pool_number}`
                 const card = poolsMap[key]
                 if (card) {
                     const colId = `table-${a.table_number}`
@@ -336,7 +299,7 @@ export default function TableTab() {
         } catch {
             toast.error("Erreur de chargement du tableau")
         }
-    }, [activeCategories, tableCount, isConfigLoaded])
+    }, [])
 
     useEffect(() => {
         // eslint-disable-next-line
@@ -408,14 +371,14 @@ export default function TableTab() {
     }
 
     const saveAll = async (currentCols: Record<string, PoolCardData[]>) => {
-         const updates: { category: string, pool_number: number, table_number: number, order: number }[] = []
+         const updates: { category_id: number, pool_number: number, table_number: number, order: number }[] = []
          
          Object.entries(currentCols).forEach(([colId, items]) => {
              const tableNum = colId === "unassigned" ? 0 : parseInt(colId.replace("table-", ""))
              
              items.forEach((item, idx) => {
                  updates.push({
-                     category: item.category,
+                     category_id: item.categoryId,
                      pool_number: item.poolNumber,
                      table_number: tableNum,
                      order: idx

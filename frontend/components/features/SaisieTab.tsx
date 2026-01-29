@@ -12,20 +12,25 @@ import {
   SelectValue,
 } from "@/components/ui/select"
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table"
-import { getParticipants, createParticipant, updateParticipant, deleteParticipant, getClubs, getPreregistrations } from "@/lib/api"
+import { getParticipants, createParticipant, updateParticipant, deleteParticipant, getClubs, getPreregistrations, getCategoriesFull } from "@/lib/api"
 import { toast } from "sonner"
-import { Participant, ParticipantCreate } from "@/types"
+import { Participant, ParticipantCreate, Club, Category } from "@/types"
 import { cn } from "@/lib/utils"
 import { Trash2 } from "lucide-react"
 
 interface SaisieTabProps {
-  category: string
+  categoryName: string
 }
 
-export default function SaisieTab({ category }: SaisieTabProps) {
+export default function SaisieTab({ categoryName }: SaisieTabProps) {
   const [participants, setParticipants] = useState<Participant[]>([])
-  const [clubs, setClubs] = useState<string[]>([])
-  const [preregistrations, setPreregistrations] = useState<ParticipantCreate[]>([])
+  const [clubs, setClubs] = useState<Club[]>([])
+  const [categories, setCategories] = useState<Category[]>([])
+  const [preregistrations, setPreregistrations] = useState<any[]>([])
+
+  const currentCategory = useMemo(() => 
+    categories.find(c => c.name === categoryName), 
+  [categories, categoryName])
 
   const sortedParticipants = useMemo(() => {
     return [...participants].sort((a, b) => {
@@ -55,42 +60,40 @@ export default function SaisieTab({ category }: SaisieTabProps) {
 
   const loadData = useCallback(async () => {
     try {
-      const data = await getParticipants(category)
+      const data = await getParticipants(categoryName)
       setParticipants(data)
     } catch {
       toast.error("Erreur lors du chargement des participants")
     }
-  }, [category])
+  }, [categoryName])
 
   const handleCancelEdit = useCallback(() => {
     setEditingId(null)
     setFirstname("")
     setLastname("")
     setWeight("")
-    // setClub("") // Optional: keep club for workflow
   }, [])
 
   useEffect(() => {
-    if (category) {
-      // eslint-disable-next-line
+    if (categoryName) {
       loadData()
-      // handleCancelEdit() is handled by key prop remounting
     }
-  }, [category, loadData])
+  }, [categoryName, loadData])
 
   useEffect(() => {
     // Load global data
     getClubs().then(setClubs)
     getPreregistrations().then(setPreregistrations)
+    getCategoriesFull().then(setCategories)
   }, [])
 
-  const handlePreregistrationSelect = (pre: ParticipantCreate) => {
-    setFirstname(pre.firstname)
-    setLastname(pre.lastname)
+  const handlePreregistrationSelect = (pre: any) => {
+    setFirstname(pre.firstname || "")
+    setLastname(pre.lastname || "")
     setSex(pre.sex as "M" | "F")
-    setBirthYear(pre.birth_year.toString())
-    setClub(pre.club)
-    setWeight(pre.weight.toString())
+    setBirthYear(pre.birth_year?.toString() || "2015")
+    setClub(pre.club_name || "")
+    setWeight(pre.weight?.toString() || "")
     setShowNameSuggestions(false)
     setNameSelectedIndex(-1)
   }
@@ -101,7 +104,7 @@ export default function SaisieTab({ category }: SaisieTabProps) {
     setLastname(p.lastname)
     setSex(p.sex as "M" | "F")
     setBirthYear(p.birth_year.toString())
-    setClub(p.club)
+    setClub(p.club_name || "")
     setWeight(p.weight.toString())
     toast.info("Mode modification activé")
   }
@@ -115,39 +118,26 @@ export default function SaisieTab({ category }: SaisieTabProps) {
           toast.success("Participant supprimé")
           loadData()
           handleCancelEdit()
-          getClubs().then(setClubs)
       } catch {
           toast.error("Erreur lors de la suppression")
       }
   }
 
-    const handleSubmit = async (e: React.FormEvent) => {
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault()
+    if (!currentCategory) return toast.error("Catégorie invalide")
+    
+    const weightNum = parseFloat(weight)
+    if (!weight || isNaN(weightNum) || weightNum <= 0) {
+      return toast.error("Veuillez saisir un poids valide (supérieur à 0)")
+    }
 
-      e.preventDefault()
-
-      if (!category) return toast.error("Veuillez sélectionner une catégorie")
-
-      
-
-      const weightNum = parseFloat(weight)
-
-      if (!weight || isNaN(weightNum) || weightNum <= 0) {
-
-        return toast.error("Veuillez saisir un poids valide (supérieur à 0)")
-
-      }
-
-  
-
-      // Uniqueness check
-      // (skip if editing same participant, or logic gets complex)
-      // If Creating: check all.
-      // If Editing: check all EXCEPT self.
+    // Uniqueness check
     const isDuplicate = participants.some(p => 
-      p.id !== editingId && // Ignore self if editing
+      p.id !== editingId && 
       p.lastname.toLowerCase().trim() === lastname.toLowerCase().trim() && 
       p.firstname.toLowerCase().trim() === firstname.toLowerCase().trim() &&
-      p.club.toLowerCase().trim() === club.toLowerCase().trim()
+      (p.club_name || "").toLowerCase().trim() === club.toLowerCase().trim()
     )
 
     if (isDuplicate) {
@@ -155,31 +145,35 @@ export default function SaisieTab({ category }: SaisieTabProps) {
     }
     
     try {
+      // Find or implicitly create club on backend? 
+      // The backend needs a club_id. Let's find existing one.
+      let finalClubId = clubs.find(c => c.name.toLowerCase() === club.trim().toLowerCase())?.id
+      
       const baseData = {
-        category,
-        firstname,
-        lastname,
+        firstname: firstname.trim(),
+        lastname: lastname.trim(),
         sex,
         birth_year: parseInt(birthYear),
-        club,
-        weight: parseFloat(weight),
+        weight: weightNum,
+        category_id: currentCategory.id,
+        club_id: finalClubId || 0, // 0 will trigger creation if backend supports or we handle it
+        club_name: club.trim() // Send name too just in case backend helper needs it
       }
 
       if (editingId) {
-          await updateParticipant(editingId, baseData)
+          await updateParticipant(editingId, baseData as any)
           toast.success("Participant modifié")
           setHighlightedId(editingId)
           setTimeout(() => setHighlightedId(null), 2000)
           setEditingId(null)
       } else {
-          const newParticipant = await createParticipant(baseData as ParticipantCreate)
+          const newParticipant = await createParticipant(baseData as any)
           toast.success("Participant ajouté")
           setHighlightedId(newParticipant.id)
           setTimeout(() => setHighlightedId(null), 2000)
       }
       
       loadData()
-      // Refresh clubs list in case a new club was added
       getClubs().then(setClubs)
       
       setFirstname("")
@@ -190,20 +184,20 @@ export default function SaisieTab({ category }: SaisieTabProps) {
     }
   }
 
-  if (!category) {
+  if (!categoryName) {
     return <div className="p-8 text-center text-muted-foreground">Veuillez sélectionner une catégorie ci-dessus.</div>
   }
 
   const filteredPreregistrations = preregistrations.filter(p => 
-    p.category === category && 
+    p.category_name === categoryName && 
     (lastname.length > 0 || firstname.length > 0) &&
     (p.lastname.toLowerCase().includes(lastname.toLowerCase()) && 
      p.firstname.toLowerCase().includes(firstname.toLowerCase()))
   )
 
   const filteredClubs = clubs.filter(c => 
-    c.toLowerCase().includes(club.toLowerCase()) && c !== club
-  )
+    c.name.toLowerCase().includes(club.toLowerCase()) && c.name !== club
+  ).map(c => c.name)
 
   // Keyboard Handlers
   const handleNameKeyDown = (e: React.KeyboardEvent) => {
@@ -248,7 +242,7 @@ export default function SaisieTab({ category }: SaisieTabProps) {
         {/* Formulaire */}
         <div className={`rounded-lg border p-4 shadow-sm transition-colors ${editingId ? 'bg-amber-50 border-amber-200 dark:bg-amber-950 dark:border-amber-800' : 'bg-card'}`}>
           <div className="flex justify-between items-center mb-4">
-              <h2 className="text-lg font-semibold">{editingId ? "Modifier Participant" : "Nouveau Participant"} - {category}</h2>
+              <h2 className="text-lg font-semibold">{editingId ? "Modifier Participant" : "Nouveau Participant"} - {categoryName}</h2>
               {editingId && (
                   <Button variant="ghost" size="sm" onClick={handleCancelEdit}>Annuler</Button>
               )}
@@ -386,7 +380,7 @@ export default function SaisieTab({ category }: SaisieTabProps) {
                                 onClick={() => handleEditSelect(p)}
                             >
                                 <TableCell className="font-medium">{p.lastname} {p.firstname}</TableCell>
-                                <TableCell className="text-muted-foreground text-xs">{p.club}</TableCell>
+                                <TableCell className="text-muted-foreground text-xs">{p.club_name}</TableCell>
                                 <TableCell className="text-right whitespace-nowrap">{p.weight} kg</TableCell>
                             </TableRow>
                         ))}
