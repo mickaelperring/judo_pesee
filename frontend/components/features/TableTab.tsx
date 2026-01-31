@@ -33,6 +33,7 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { Wand2, ExternalLink, GripVertical, CheckCircle2, PlayCircle, Trophy } from "lucide-react"
 import Link from "next/link"
+import { getTableToken } from "@/app/actions/tables"
 
 // --- Components ---
 
@@ -114,9 +115,41 @@ function PoolCard({ id, data, isOverlay = false }: { id: string, data: PoolCardD
     )
 }
 
+import { QrCode } from "lucide-react"
+
+// ... (existing imports)
+
+// Async component to fetch token link
+function TableLinkButton({ tableId }: { tableId: number }) {
+    const [token, setToken] = useState<string | null>(null)
+
+    useEffect(() => {
+        getTableToken(tableId).then(setToken)
+    }, [tableId])
+
+    if (!token) return <div className="h-7 w-24 bg-muted animate-pulse rounded" />
+
+    const encodedToken = encodeURIComponent(token)
+
+    return (
+        <div className="flex gap-1">
+            <Button variant="outline" size="sm" className="text-xs h-7 px-2" asChild>
+                <Link href={`/table/${encodedToken}`} target="_blank">
+                    <ExternalLink className="mr-1 h-3 w-3" /> Ouvrir
+                </Link>
+            </Button>
+            <Button variant="outline" size="sm" className="text-xs h-7 px-2" asChild>
+                <Link href={`/qrcode/${encodedToken}`} target="_blank" title="Afficher le QRCode">
+                    <QrCode className="h-3 w-3" />
+                </Link>
+            </Button>
+        </div>
+    )
+}
+
 function TableRow({ id, title, items, isUnassigned = false }: { id: string, title: string, items: PoolCardData[], isUnassigned?: boolean }) {
     const { setNodeRef, isOver } = useSortable({ id, disabled: true }) 
-    const tableId = id.replace("table-", "")
+    const tableId = parseInt(id.replace("table-", ""))
     
     // Calculate total fights
     // Formula: n * (n-1) / 2
@@ -152,11 +185,7 @@ function TableRow({ id, title, items, isUnassigned = false }: { id: string, titl
                         <div className="text-[10px] sm:text-xs text-muted-foreground font-medium">
                             {totalFights} combats
                         </div>
-                        <Button variant="outline" size="sm" className="text-xs h-7 px-2" asChild>
-                            <Link href={`/table/${tableId}`}>
-                                <ExternalLink className="mr-1 h-3 w-3" /> Ouvrir
-                            </Link>
-                        </Button>
+                        <TableLinkButton tableId={tableId} />
                     </div>
                 )}
             </div>

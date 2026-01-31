@@ -12,7 +12,8 @@ import ScoreTab from "./ScoreTab"
 import StatsTab from "./StatsTab"
 import TableTab from "./TableTab"
 import AdminTab from "./AdminTab"
-import { Database } from "lucide-react"
+import { Database, LogOut } from "lucide-react"
+import { logout } from "@/app/actions/auth"
 
 export default function JudoManager() {
   const router = useRouter()
@@ -63,6 +64,9 @@ export default function JudoManager() {
                 <a href="/api/debug/view" target="_blank" rel="noreferrer">
                     <Database className="h-4 w-4 mr-2" /> Debug DB
                 </a>
+            </Button>
+            <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-destructive mt-1" onClick={() => logout()}>
+                <LogOut className="h-4 w-4 mr-2" /> Déconnexion
             </Button>
         </div>
         
