@@ -132,4 +132,9 @@
   input[type=number] {
     -moz-appearance: textfield;
   }
+  
+  /* Hide Next.js dev/static indicator */
+  nextjs-portal {
+    display: none !important;
+  }
 }
