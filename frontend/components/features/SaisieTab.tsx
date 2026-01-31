@@ -16,7 +16,7 @@ import { getParticipants, createParticipant, updateParticipant, deleteParticipan
 import { toast } from "sonner"
 import { Participant, ParticipantCreate, Club, Category } from "@/types"
 import { cn } from "@/lib/utils"
-import { Trash2 } from "lucide-react"
+import { Trash2, Eraser } from "lucide-react"
 
 interface SaisieTabProps {
   categoryName: string
@@ -73,6 +73,15 @@ export default function SaisieTab({ categoryName }: SaisieTabProps) {
     setLastname("")
     setWeight("")
   }, [])
+
+  const handleClear = () => {
+      setFirstname("")
+      setLastname("")
+      setWeight("")
+      setClub("")
+      setBirthYear("2015")
+      setSex("M")
+  }
 
   useEffect(() => {
     if (categoryName) {
@@ -340,9 +349,13 @@ export default function SaisieTab({ categoryName }: SaisieTabProps) {
             </div>
 
             <div className="flex gap-2">
-                {editingId && (
+                {editingId ? (
                     <Button type="button" variant="destructive" onClick={handleDelete} className="px-3">
                         <Trash2 className="h-4 w-4" />
+                    </Button>
+                ) : (
+                    <Button type="button" variant="secondary" onClick={handleClear} className="px-3" title="Effacer le formulaire">
+                        <Eraser className="h-4 w-4" />
                     </Button>
                 )}
                 <Button type="submit" className="flex-1" variant={editingId ? "default" : "default"}>
@@ -372,7 +385,7 @@ export default function SaisieTab({ categoryName }: SaisieTabProps) {
                             <TableRow 
                                 key={p.id} 
                                 className={cn(
-                                    "cursor-pointer hover:bg-muted/50 transition-colors duration-500 border-l-4 overflow-hidden",
+                                    "cursor-pointer hover:bg-muted/50 transition-colors duration-500 border-l-4",
                                     p.sex === 'M' ? "border-l-blue-500" : "border-l-pink-500",
                                     editingId === p.id && "bg-muted",
                                     highlightedId === p.id && "bg-green-100 dark:bg-green-900/40"

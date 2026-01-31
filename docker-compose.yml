@@ -35,6 +35,8 @@ services:
     volumes:
       - ./frontend:/app
       - /app/node_modules
+    environment:
+      - ADMIN_PASSWORD=AJT25500*
     depends_on:
       - backend
     labels:
