@@ -153,12 +153,12 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     const getEffectiveWinner = () => {
         if (score1 > score2) return "1"
         if (score2 > score1) return "2"
-        if (score1 === 1 && score2 === 1) return manualWinner
+        if (score1 === score2 && score1 > 0) return manualWinner
         return "0"
     }
 
     const effectiveWinner = getEffectiveWinner()
-    const isManualAllowed = score1 === 1 && score2 === 1
+    const isManualAllowed = score1 === score2 && score1 > 0
 
     const handleScoreSave = async (e: React.FormEvent) => {
         e.preventDefault()
@@ -369,16 +369,14 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         })()}
                                     </div>
                                     <div className="w-full max-w-[140px]">
-                                        <NumberInput 
-                                            name="score1" 
-                                            value={score1} 
-                                            onChange={(val) => setScore1(Number(val))} 
-                                            min={0} 
-                                            inputClassName="text-center font-mono text-lg"
-                                            autoFocus
-                                            onFocus={(e) => setTimeout(() => e.target.select(), 0)}
-                                        />
-                                    </div>
+                                                                            <NumberInput 
+                                                                                name="score1" 
+                                                                                value={score1} 
+                                                                                onChange={(val) => setScore1(Number(val))} 
+                                                                                min={0} 
+                                                                                inputClassName="text-center font-mono text-lg"
+                                                                                autoFocus
+                                                                            />                                    </div>
                                 </div>
 
                                 <div className="text-muted-foreground font-bold italic pt-10">VS</div>
@@ -392,15 +390,13 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         })()}
                                     </div>
                                     <div className="w-full max-w-[140px]">
-                                        <NumberInput 
-                                            name="score2" 
-                                            value={score2} 
-                                            onChange={(val) => setScore2(Number(val))} 
-                                            min={0} 
-                                            inputClassName="text-center font-mono text-lg"
-                                            onFocus={(e) => setTimeout(() => e.target.select(), 0)}
-                                        />
-                                    </div>
+                                                                            <NumberInput 
+                                                                                name="score2" 
+                                                                                value={score2} 
+                                                                                onChange={(val) => setScore2(Number(val))} 
+                                                                                min={0} 
+                                                                                inputClassName="text-center font-mono text-lg"
+                                                                            />                                    </div>
                                 </div>
                             </div>
 
