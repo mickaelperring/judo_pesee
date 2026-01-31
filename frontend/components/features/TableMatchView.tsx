@@ -134,7 +134,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
 
     const handlePoolClick = (p: PoolAssignment) => {
         const catName = p.category_name || ""
-        const key = `${catName}-${p.pool_number}`
+        const key = `${catName}::${p.pool_number}`
         if (activePool === key) {
             setActivePool(null) // Collapse
         } else {
@@ -203,7 +203,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
             setSelectedFight(null)
             
             if (activePool) {
-                const [cat, num] = activePool.split("-")
+                const [cat, num] = activePool.split("::")
                 await loadActivePoolFights(cat, parseInt(num))
                 // Refresh stats
                 const all = await getParticipants()
@@ -222,9 +222,6 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     return (
         <div className="container mx-auto p-4 max-w-lg pb-20">
             <div className="flex items-center gap-4 mb-6">
-                <Link href="/">
-                    <Button variant="outline" size="icon"><ArrowLeft className="h-4 w-4"/></Button>
-                </Link>
                 <div>
                     <h1 className="text-xl font-bold">Table {tableId}</h1>
                     <p className="text-muted-foreground text-sm">Matchs en cours</p>
@@ -235,7 +232,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                 {pools.length === 0 && <div className="text-center text-muted-foreground py-8">Aucun match assigné.</div>}
                 
                 {pools.map(pool => {
-                    const isActive = activePool === `${pool.category_name}-${pool.pool_number}`
+                    const isActive = activePool === `${pool.category_name}::${pool.pool_number}`
                     const poolParticipants = participants.filter(p => p.category_id === pool.category_id && p.pool_number === pool.pool_number)
                     
                     const { status } = getPoolStatus(poolParticipants, allFights, pool)
@@ -356,7 +353,7 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
 
             {/* Scoring Dialog */}
             <Dialog open={!!selectedFight} onOpenChange={(open) => !open && setSelectedFight(null)}>
-                <DialogContent>
+                <DialogContent className="sm:max-w-[500px]">
                     <DialogHeader>
                         <DialogTitle>Saisie du résultat</DialogTitle>
                     </DialogHeader>
@@ -371,17 +368,20 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                             return p ? `${p.firstname} ${p.lastname}` : "";
                                         })()}
                                     </div>
-                                    <NumberInput 
-                                        name="score1" 
-                                        value={score1} 
-                                        onChange={(val) => setScore1(Number(val))} 
-                                        min={0} 
-                                        inputClassName="text-center font-mono text-lg"
-                                        autoFocus
-                                    />
+                                    <div className="w-full max-w-[140px]">
+                                        <NumberInput 
+                                            name="score1" 
+                                            value={score1} 
+                                            onChange={(val) => setScore1(Number(val))} 
+                                            min={0} 
+                                            inputClassName="text-center font-mono text-lg"
+                                            autoFocus
+                                            onFocus={(e) => setTimeout(() => e.target.select(), 0)}
+                                        />
+                                    </div>
                                 </div>
 
-                                <div className="text-muted-foreground font-bold italic">VS</div>
+                                <div className="text-muted-foreground font-bold italic pt-10">VS</div>
 
                                 {/* Fighter 2 */}
                                 <div className="space-y-2 flex flex-col items-center">
@@ -391,13 +391,16 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                             return p ? `${p.firstname} ${p.lastname}` : "";
                                         })()}
                                     </div>
-                                    <NumberInput 
-                                        name="score2" 
-                                        value={score2} 
-                                        onChange={(val) => setScore2(Number(val))} 
-                                        min={0} 
-                                        inputClassName="text-center font-mono text-lg"
-                                    />
+                                    <div className="w-full max-w-[140px]">
+                                        <NumberInput 
+                                            name="score2" 
+                                            value={score2} 
+                                            onChange={(val) => setScore2(Number(val))} 
+                                            min={0} 
+                                            inputClassName="text-center font-mono text-lg"
+                                            onFocus={(e) => setTimeout(() => e.target.select(), 0)}
+                                        />
+                                    </div>
                                 </div>
                             </div>
 

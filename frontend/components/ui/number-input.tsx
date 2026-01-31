@@ -65,6 +65,7 @@ const NumberInput = React.forwardRef<HTMLInputElement, NumberInputProps>(
           type="number"
           className={cn(
             "rounded-none text-center h-9 focus-visible:ring-1 focus-visible:ring-ring focus-visible:ring-offset-0 z-0 focus:z-10 relative",
+            "min-w-[50px] w-full",
             inputClassName
           )}
           value={value}

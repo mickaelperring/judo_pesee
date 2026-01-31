@@ -1,19 +1,30 @@
 "use client"
 
 import { useEffect, useState } from "react"
-import dynamic from "next/dynamic"
+import QRCode from "qrcode"
 import { Button } from "@/components/ui/button"
 import { Printer, ArrowLeft } from "lucide-react"
 import Link from "next/link"
 
-const QRCode = dynamic(() => import("react-qr-code"), { ssr: false })
-
 export default function QRCodeView({ token, tableId }: { token: string, tableId: number }) {
     const [url, setUrl] = useState("")
+    const [qrSrc, setQrSrc] = useState("")
 
     useEffect(() => {
         // Construct the full URL for the QR code
-        setUrl(`${window.location.origin}/table/${token}`)
+        const fullUrl = `${window.location.origin}/table/${token}`
+        console.log("Generating QR code for:", fullUrl)
+        setUrl(fullUrl)
+        
+        // Generate QR code data URL
+        QRCode.toDataURL(fullUrl, { width: 400, margin: 2 })
+            .then(url => {
+                console.log("QR code generated successfully")
+                setQrSrc(url)
+            })
+            .catch(err => {
+                console.error("Error generating QR code", err)
+            })
     }, [token])
 
     if (!url) return null
@@ -39,13 +50,15 @@ export default function QRCodeView({ token, tableId }: { token: string, tableId:
                 </div>
 
                 <div className="p-4 border-4 border-black rounded-3xl bg-white shadow-xl">
-                    <QRCode 
-                        value={url} 
-                        size={256} 
-                        level="H"
-                        style={{ height: "auto", maxWidth: "100%", width: "100%" }}
-                        viewBox={`0 0 256 256`}
-                    />
+                    {qrSrc ? (
+                        <img 
+                            src={qrSrc} 
+                            alt={`QR Code pour Table ${tableId}`} 
+                            className="w-full h-auto"
+                        />
+                    ) : (
+                        <div className="w-64 h-64 bg-slate-100 animate-pulse rounded-xl" />
+                    )}
                 </div>
 
                 <div className="space-y-1">

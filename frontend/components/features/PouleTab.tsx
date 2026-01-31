@@ -109,8 +109,8 @@ function SortableItem({ id, item, minWeight, maxWeight, onToggleHC }: { id: stri
              <div className="w-1/3 font-semibold truncate text-xs flex items-center gap-2">
                 {p?.firstname} {p?.lastname}
              </div>
-             <div className="w-1/4 text-[10px] text-muted-foreground truncate">{p?.club}</div>
-             <div className="flex-1 flex items-center gap-2 min-w-0">
+             <div className="w-1/4 text-[10px] text-muted-foreground truncate">{p?.club_name}</div>
+             <div className="flex-1 flex items-center gap-3 min-w-0">
                 <span className="text-[10px] tabular-nums shrink-0">{p?.weight} kg</span>
                 <Progress value={weightPercent} className="h-1 flex-1 min-w-[20px]" />
              </div>

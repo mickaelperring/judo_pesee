@@ -68,7 +68,12 @@ export function getPoolStatus(
  */
 export function sortParticipantsByRank(participants: Participant[]) {
     return [...participants].sort((a, b) => {
-        if (b.victories !== a.victories) return b.victories - a.victories
-        return b.score - a.score
+        const vA = a.victories ?? 0
+        const vB = b.victories ?? 0
+        const sA = a.score ?? 0
+        const sB = b.score ?? 0
+        
+        if (vB !== vA) return vB - vA
+        return sB - sA
     })
 }

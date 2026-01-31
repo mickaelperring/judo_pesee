@@ -71,7 +71,7 @@ export default function PoolScorePage({ params }: { params: Promise<{ category: 
                     <div key={p.id} className="flex items-center gap-4 border-b last:border-0 pb-4 last:pb-0">
                             <div className="flex-1">
                                 <div className="font-semibold text-lg">{p.lastname} {p.firstname}</div>
-                                <div className="text-sm text-muted-foreground">{p.club}</div>
+                                <div className="text-sm text-muted-foreground">{p.club_name}</div>
                             </div>
                             
                             <Badge variant="secondary" className="text-sm h-8 px-3">

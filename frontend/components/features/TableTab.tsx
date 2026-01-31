@@ -400,7 +400,7 @@ export default function TableTab() {
     }
 
     const saveAll = async (currentCols: Record<string, PoolCardData[]>) => {
-         const updates: { category_id: number, pool_number: number, table_number: number, order: number }[] = []
+         const updates: { category_id: number, pool_number: number, table_number: number, order: number, validated: boolean }[] = []
          
          Object.entries(currentCols).forEach(([colId, items]) => {
              const tableNum = colId === "unassigned" ? 0 : parseInt(colId.replace("table-", ""))
@@ -410,7 +410,8 @@ export default function TableTab() {
                      category_id: item.categoryId,
                      pool_number: item.poolNumber,
                      table_number: tableNum,
-                     order: idx
+                     order: idx,
+                     validated: false
                  })
              })
          })

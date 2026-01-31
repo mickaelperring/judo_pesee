@@ -1,5 +1,5 @@
 import axios from 'axios';
-import { Participant, ParticipantCreate, StatsResponse, PoolAssignment } from '@/types';
+import { Participant, ParticipantCreate, StatsResponse, PoolAssignment, Category, Club } from '@/types';
 
 // Force relative path for dev/prod consistency via Traefik/Next.js Proxy
 const API_URL = '/api'; 
@@ -20,7 +20,7 @@ export const getParticipants = (category?: string) =>
 export const createParticipant = (data: ParticipantCreate) => api.post<Participant>('/participants', data).then(res => res.data);
 export const updateParticipant = (id: number, data: Partial<Participant>) => api.put<Participant>(`/participants/${id}`, data).then(res => res.data);
 export const deleteParticipant = (id: number) => api.delete(`/participants/${id}`).then(res => res.data);
-export const updatePools = (updates: { id: number; pool_number: number }[]) => 
+export const updatePools = (updates: { id: number; pool_number: number | null }[]) => 
   api.put('/participants/batch/update_pools', updates).then(res => res.data);
 export const getClubs = () => api.get<Club[]>('/clubs').then(res => res.data);
 export const generatePools = (category: string) => api.post(`/generate_pools/${category}`).then(res => res.data);

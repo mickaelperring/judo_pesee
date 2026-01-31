@@ -185,11 +185,13 @@ export default function ScoreTab({ categoryName }: ScoreTabProps) {
                                                 let prevScore = -1
                                                 
                                                 const listWithRanks = nonHC.map((p) => {
-                                                    if (p.victories !== prevVictories || p.score !== prevScore) {
+                                                    const pVictories = p.victories ?? 0
+                                                    const pScore = p.score ?? 0
+                                                    if (pVictories !== prevVictories || pScore !== prevScore) {
                                                         currentRank++
                                                     }
-                                                    prevVictories = p.victories
-                                                    prevScore = p.score
+                                                    prevVictories = pVictories
+                                                    prevScore = pScore
                                                     return { ...p, rank: currentRank }
                                                 })
                                                 
