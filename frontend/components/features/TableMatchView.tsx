@@ -282,10 +282,12 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                             <Card 
                                                 key={fight.id === -1 ? `temp-${fight.computedOrder}` : fight.id} 
                                                 className={cn(
-                                                    "cursor-pointer hover:bg-accent transition-colors",
-                                                    isPlayed && "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800"
+                                                    status !== "validated" && "cursor-pointer hover:bg-accent",
+                                                    "transition-colors",
+                                                    isPlayed && "bg-green-50/50 border-green-200 dark:bg-green-900/10 dark:border-green-800",
+                                                    status === "validated" && "opacity-80 shadow-none"
                                                 )} 
-                                                onClick={() => handleFightClick(fight)}
+                                                onClick={() => status !== "validated" && handleFightClick(fight)}
                                             >
                                                 <CardContent className="p-3">
                                                     <div className="flex items-center justify-between gap-2 text-sm">

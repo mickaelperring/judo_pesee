@@ -218,7 +218,7 @@ export default function ScoreTab({ categoryName }: ScoreTabProps) {
                                                                         "w-8 h-8 rounded-full flex items-center justify-center font-black text-xs shadow-sm shrink-0",
                                                                         p.rank === 1 ? "bg-amber-400 text-amber-950" : 
                                                                         p.rank === 2 ? "bg-slate-300 text-slate-900" :
-                                                                        p.rank === 3 ? "bg-orange-300 text-orange-950" : "bg-slate-100 text-slate-500"
+                                                                        p.rank >= 3 ? "bg-orange-300 text-orange-950" : "bg-slate-100 text-slate-500"
                                                                     )}>
                                                                         {p.rank}
                                                                     </div>

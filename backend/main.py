@@ -1,4 +1,4 @@
-from fastapi import FastAPI, Depends, HTTPException
+from fastapi import FastAPI, Depends, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse, HTMLResponse
 from sqlalchemy.orm import Session, joinedload
@@ -11,6 +11,8 @@ import yaml
 from urllib.parse import quote
 import io
 import math
+from fpdf import FPDF
+import numpy as np
 
 # Create Tables
 models.Base.metadata.create_all(bind=database.engine)
@@ -471,33 +473,200 @@ def validate_pool(validation: schemas.PoolValidation, db: Session = Depends(get_
 
 @app.get("/score_sheet/{category}")
 def download_score_sheet(category: str, base_url: Optional[str] = None, db: Session = Depends(get_db)):
-    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
-    from reportlab.lib import colors, styles, pagesizes, units
+    # 1. Fetch data
     parts = db.query(models.Participant).join(models.Category).filter(models.Category.name == category).order_by(models.Participant.pool_number, models.Participant.weight).all()
-    pools = {}
+    
+    # 2. Build DataFrame
+    data = []
     for p in parts:
         if p.pool_number:
-            if p.pool_number not in pools: pools[p.pool_number] = []
-            pools[p.pool_number].append(p)
-    buffer = io.BytesIO()
-    doc = SimpleDocTemplate(buffer, pagesize=pagesizes.A4)
-    styles = styles.getSampleStyleSheet()
-    elements = []
-    for num in sorted(pools.keys()):
-        elements.append(Paragraph(f"Catégorie: {category} - Poule {num}", styles['Title']))
-        data = [["Nom", "Prénom", "Club", "Poids", "Score"]]
-        for p in pools[num]: data.append([p.lastname, p.firstname, p.club.name if p.club else "", f"{p.weight} kg", "_______"])
-        t = Table(data, colWidths=[4*units.cm, 4*units.cm, 5*units.cm, 2*units.cm, 3*units.cm])
-        t.setStyle(TableStyle([('BACKGROUND', (0, 0), (-1, 0), colors.grey), ('GRID', (0, 0), (-1, -1), 1, colors.black)]))
-        elements.append(t)
-        if base_url:
-            url = f"{base_url}/score_poule/{quote(category)}/{num}"
-            elements.append(Spacer(1, 1*units.cm))
-            elements.append(Paragraph(f'<link href="{url}" color="blue"><u>Saisir les scores en ligne</u></link>', styles['Normal']))
-        elements.append(PageBreak())
-    doc.build(elements)
-    buffer.seek(0)
-    return FileResponse(buffer, media_type='application/pdf', filename=f"Feuille_{category}.pdf")
+            data.append({
+                'Nom': p.lastname,
+                'Prenom': p.firstname,
+                'Club': p.club.name if p.club else "",
+                'AnneeNaissance': p.birth_year,
+                'Poids': p.weight,
+                'Opposition droit à l\'image': None,
+                'Poule': p.pool_number
+            })
+    
+    if not data:
+        # Handle empty case
+        pdf = FPDF()
+        pdf.add_page()
+        pdf.set_font("Arial", size=12)
+        pdf.cell(200, 10, txt="Aucun participant dans cette catégorie", ln=1, align="C")
+        
+        # Output as string/bytes
+        content = pdf.output(dest='S').encode('latin-1')
+        return Response(content=content, media_type='application/pdf', headers={"Content-Disposition": f"attachment; filename=Feuille_{category}.pdf"})
+
+    df = pd.DataFrame(data)
+
+    # 3. Generate PDF using provided logic
+    A4width = 210.0
+    margin = 10.0
+    inter = 2.0
+    OPPOSITION_DROITIMAGE = 'Opposition droit à l\'image'
+    
+    # Get table count from config
+    config_tables = db.query(models.Configuration).filter(models.Configuration.key == "table_count").first()
+    NTABLES = int(config_tables.value) if config_tables and config_tables.value else 5
+
+    # Resort (by Pool)
+    df = df.sort_values(by=['Poule', 'Poids'])
+
+    pdf = FPDF(format='A4')
+    
+    ParticipantsPerPoule = df.groupby('Poule')['Nom'].count()
+    
+    TablesDict = {}
+    if NTABLES is not None:
+        tableDf = ParticipantsPerPoule.copy().sort_values(ascending = False)
+        Tables = [0] * NTABLES
+        for poule, n in tableDf.items():
+            diff = [0] * NTABLES
+            for i,t in enumerate(Tables): # try table one by one
+                newTable = Tables.copy()
+                newTable[i] += (n * (n-1)) // 2
+                diff[i] = max(newTable) - min(newTable)
+            k = np.argmin(np.array(diff))
+            Tables[k] = Tables[k] + n
+            TablesDict[poule] = k+1
+
+    index = 0
+    unique_pools = ParticipantsPerPoule.index.values
+    
+    for kPage in range(0, len(unique_pools)) :
+        iPoule = unique_pools[kPage]
+        table = TablesDict.get(iPoule, None)
+        indicesizeX = 5    
+        indicesizeY = 3
+        if (kPage % 3) == 0:
+            pdf.add_page()
+        
+        N = ParticipantsPerPoule[iPoule]
+        sizeTab = 68.0
+
+        TextWidth = A4width - 2 * margin - sizeTab - 3 * inter
+        
+        LineHeight = sizeTab / (N+1)
+        OffsetW = margin + ( sizeTab + margin + 10)* (kPage % 3)
+        pdf.set_xy(margin, OffsetW)
+        pdf.set_font("Arial", size=10)
+
+        pdf.set_font("Arial", size=12)
+        for n in range (0, N + 1):
+            pdf.set_xy(margin, OffsetW + n * LineHeight)
+            pdf.set_text_color(255 if n == 0 else 0)
+            pdf.set_fill_color(128)
+            suffix = ''
+            if n != 0:
+                odi = df.iloc[index][OPPOSITION_DROITIMAGE]
+                odi_print = odi is not None and str(odi).lower() == 'x'
+                if odi_print:
+                    SIZE_LOGO = 6
+                    MARGIN_LOGO = 1
+                    try:
+                        pdf.image(os.path.join(DATA_DIR, '../asset/odi.png'), margin + MARGIN_LOGO , OffsetW + (n +1) * LineHeight - SIZE_LOGO - MARGIN_LOGO , SIZE_LOGO, SIZE_LOGO)
+                    except:
+                        pass
+
+            if n == 0:
+                txt = f'Table {table}' if table is not None else ''
+                fill = True
+            else:
+                txt = df.iloc[index]['Prenom'] + " " + df.iloc[index]['Nom']
+                fill = False
+            
+            try:
+                txt = txt.encode('latin-1', 'replace').decode('latin-1')
+            except:
+                pass
+
+            pdf.cell(TextWidth * 0.45 + (TextWidth * 0.25 if n == 0 else 0), LineHeight, txt=txt + suffix, align="C", border = 1, fill = fill )
+            
+            pdf.set_xy(margin + TextWidth * 0.45,pdf.get_y())
+            pdf.set_xy(pdf.get_x() - indicesizeX,pdf.get_y() - indicesizeY + LineHeight)
+            pdf.set_font("Arial", size=5)
+            
+            weight_txt = (str(df.iloc[index]['Poids']) + " kg") if n != 0 else ""
+            pdf.cell(indicesizeX , indicesizeY, txt=weight_txt, align="R", border = 0)
+            
+            pdf.set_font("Arial", size=12)
+            pdf.set_xy(pdf.get_x(), pdf.get_y( )- LineHeight + indicesizeY)
+            pdf.set_font("Arial", size=9)
+            
+            club_txt = "" if n == 0 else str(df.iloc[index]['Club'])
+            try:
+                club_txt = club_txt.encode('latin-1', 'replace').decode('latin-1')
+            except:
+                pass
+                
+            pdf.cell(TextWidth * 0.25 , LineHeight, txt=club_txt, align="C", border = not n == 0)
+            
+            pdf.set_font("Arial", size=12)
+            pdf.set_text_color(0)
+            pdf.cell(inter , LineHeight, border = 0)
+            
+            for k in range (0, N + 1 ):
+                black = ((k == 0 or n == 0) and (n + k) != 0)
+                grey = k == n and k != 0
+                pdf.set_text_color(255 if black else 0)
+                pdf.set_fill_color(0 if black else 127)
+                pdf.cell(sizeTab/ (N +1) , LineHeight, txt = str(n+k) if black else "", align="C", border = 1, fill = black or grey)
+            pdf.set_text_color(0)
+            
+            if n == 0:
+                pdf.cell(inter , LineHeight, border = 0)
+                pdf.set_fill_color(0)
+                pdf.set_text_color(255)
+                pdf.cell(TextWidth * 0.45 / 4 , LineHeight, txt = 'Vic', align="C", border = 1, fill = True)
+                pdf.cell(TextWidth * 0.45 / 4 , LineHeight, txt = 'Pts',align="C", border = 1, fill = True)                
+                continue
+            
+            pdf.cell(inter , LineHeight, border = 0)
+            pdf.cell(TextWidth * 0.45 / 4 , LineHeight, align="C", border = 1)
+            pdf.cell(TextWidth * 0.45 / 4 , LineHeight, align="C", border = 1)
+            
+            pdf.set_xy(pdf.get_x() - indicesizeX,pdf.get_y() - indicesizeY + LineHeight)
+            pdf.set_font("Arial", size=5)
+            pdf.cell(indicesizeX , indicesizeY, txt="", align="R", border = 0) 
+            pdf.set_font("Arial", size=12)
+            pdf.set_xy(pdf.get_x(), pdf.get_y( )- LineHeight + indicesizeY)
+            
+            pdf.cell(inter , LineHeight, border = 0)
+            pdf.line(pdf.get_x(),pdf.get_y() + LineHeight ,TextWidth * 0.3 / 4 + pdf.get_x() ,pdf.get_y() + LineHeight);
+            
+            index = index + 1
+
+        pdf.set_xy(A4width - margin - indicesizeX, OffsetW + (N + 1) * LineHeight)
+        pdf.set_font("Arial", size=5)
+        cat_name_safe = category.encode('latin-1', 'replace').decode('latin-1')
+        pdf.cell(indicesizeX , indicesizeY, txt=cat_name_safe, align="R", border = 0)
+        pdf.set_font("Arial", size=10, style = 'B')
+        
+        Ordre =''
+        if N == 2:
+            Ordre = '1-2'
+        elif N == 3:
+            Ordre = '1-2  /  2-3  /  1-3'
+        elif N == 4:
+            Ordre = '1-2  /  3-4  /  1-3  /  2-4  /  1-4  /  2-3'
+        elif N == 5:
+            Ordre = '1-2  /  4-3  /  1-5  /  2-3  /  4-5  /  1-3  /  2-5  /  1-4  /  3-5  /  2-4'
+        elif N == 6:
+            Ordre = '1-2  /  3-4  /  2-6  /  1-5  /  4-6  /  2-3  /  1-6  /  4-5  /  1-3  /  2-5  /  3-6  /  1-4  /  3-5  /  2-4  /  5-6'
+
+        pdf.set_xy(margin, OffsetW + (N + 1) * LineHeight - 2)
+        pdf.cell(A4width - 2 * margin , LineHeight, txt=f'{Ordre}', align="L", border = 0)
+        
+        pdf.set_font("Arial", size=12)
+		
+    tmp_path = os.path.join(DATA_DIR, f"Feuille_{category}.pdf")
+    pdf.output(tmp_path, 'F')
+    
+    return FileResponse(tmp_path, media_type='application/pdf', filename=f"Feuille_{category}.pdf")
 
 @app.get("/debug/tables", response_class=HTMLResponse)
 def debug_tables(db: Session = Depends(get_db)):

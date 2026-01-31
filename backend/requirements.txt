@@ -6,3 +6,5 @@ reportlab
 pandas
 python-multipart
 pyyaml
+fpdf
+numpy
