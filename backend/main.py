@@ -787,5 +787,17 @@ def debug_view(db: Session = Depends(get_db)):
         html += f"<tr><td>{p.get('lastname')}</td><td>{p.get('firstname')}</td><td>{sex_badge}</td><td>{p.get('birth_year')}</td><td>{p.get('weight')}</td><td>{p.get('club_name')}</td><td>{p.get('category_name')}</td></tr>"
     html += "</table>"
 
+    # 8. Stats by Birth Year / Category
+    if parts:
+        data_stats = [{"birth_year": p.birth_year, "category": p.category.name if p.category else "Sans Catégorie"} for p in parts]
+        df_stats = pd.DataFrame(data_stats)
+        stats_grouped = df_stats.groupby(['birth_year', 'category']).size().reset_index(name='count')
+        stats_grouped = stats_grouped.sort_values(by=['birth_year', 'category'])
+        
+        html += f"<h2>Statistiques par Année / Catégorie</h2><table><tr><th>Année</th><th>Catégorie</th><th>Nombre</th></tr>"
+        for _, row in stats_grouped.iterrows():
+            html += f"<tr><td>{row['birth_year']}</td><td>{row['category']}</td><td>{row['count']}</td></tr>"
+        html += "</table>"
+
     html += "</body></html>"
     return HTMLResponse(content=html)
