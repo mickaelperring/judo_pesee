@@ -260,8 +260,13 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                         <CardTitle className="text-base">{pool.category_name} - Poule {pool.pool_number}</CardTitle>
                                         <Badge variant="secondary">{poolParticipants.length} combattants</Badge>
                                     </div>
-                                    <div className="text-xs text-muted-foreground">
-                                        {poolParticipants.map(p => `${p.firstname} ${p.lastname}`).join(", ")}
+                                    <div className="text-sm text-slate-700 dark:text-slate-300 mt-2 space-y-1">
+                                        {poolParticipants.map(p => (
+                                            <div key={p.id} className="flex justify-between items-center border-b border-slate-100 dark:border-slate-800 last:border-0 pb-1 last:pb-0">
+                                                <span className="font-medium">{p.firstname} {p.lastname}</span>
+                                                <span className="text-xs text-muted-foreground font-mono">V:{p.victories || 0} / P:{p.score || 0}</span>
+                                            </div>
+                                        ))}
                                     </div>
                                 </CardHeader>
                             </Card>
@@ -301,7 +306,6 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                                 {p1.hors_categorie && <Badge variant="outline" className="text-[8px] h-3 px-1 border-rose-500 text-rose-500 font-black">HC</Badge>}
                                                             </div>
                                                             <div className="text-[10px] text-muted-foreground">{p1.club_name} {p1.hors_categorie && "(HC)"}</div>
-                                                            <div className="text-[10px] text-muted-foreground">V: {p1.victories} - P: {p1.score}</div>
                                                         </div>
                                                         
                                                         <div className="flex flex-col items-center px-2 bg-muted/30 rounded min-w-[60px]">
@@ -317,7 +321,6 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                                                 {fight.winner_id === p2.id && <Trophy className="h-3 w-3 text-amber-500 shrink-0" />}
                                                             </div>
                                                             <div className="text-[10px] text-muted-foreground">{p2.club_name} {p2.hors_categorie && "(HC)"}</div>
-                                                            <div className="text-[10px] text-muted-foreground">V: {p2.victories} - P: {p2.score}</div>
                                                         </div>
                                                     </div>
                                                 </CardContent>
