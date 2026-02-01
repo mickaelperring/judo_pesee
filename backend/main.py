@@ -711,6 +711,17 @@ def debug_tables(db: Session = Depends(get_db)):
 
 @app.get("/debug/view", response_class=HTMLResponse)
 def debug_view(db: Session = Depends(get_db)):
+    # Fetch data first for mismatch check
+    parts = db.query(models.Participant).options(joinedload(models.Participant.category), joinedload(models.Participant.club)).order_by(models.Participant.lastname).all()
+    
+    # Check for general warning
+    has_mismatch = False
+    for p in parts:
+        if p.category and p.category.birth_year_min is not None and p.category.birth_year_max is not None:
+            if not (p.category.birth_year_min <= p.birth_year <= p.category.birth_year_max):
+                has_mismatch = True
+                break
+
     html = """<html><head><title>Judo DB Debug</title><style>
     body { font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; padding: 20px; background: #f4f4f9; color: #333; }
     h1 { color: #2c3e50; }
@@ -723,7 +734,12 @@ def debug_view(db: Session = Depends(get_db)):
     .badge { padding: 4px 8px; border-radius: 4px; font-size: 11px; font-weight: bold; }
     .badge-blue { background: #e3f2fd; color: #1565c0; }
     .badge-green { background: #e8f5e9; color: #2e7d32; }
+    .alert { background: #fee2e2; border: 1px solid #f87171; color: #991b1b; padding: 15px; border-radius: 8px; margin-bottom: 20px; font-weight: bold; }
     </style></head><body><h1>Contenu de la Base de Données</h1>"""
+
+    if has_mismatch:
+        html += '<div class="alert">⚠️ ATTENTION : Des incohérences ont été détectées entre les années de naissance et les catégories assignées.</div>'
+
 
     # Helper for name
     def p_name(p):
@@ -749,7 +765,6 @@ def debug_view(db: Session = Depends(get_db)):
     html += "</table>"
 
     # 4. Participants (Joined)
-    parts = db.query(models.Participant).options(joinedload(models.Participant.category), joinedload(models.Participant.club)).order_by(models.Participant.lastname).all()
     # Create lookup for fights
     p_map = {p.id: p for p in parts}
 
@@ -758,7 +773,17 @@ def debug_view(db: Session = Depends(get_db)):
         c_name = p.category.name if p.category else "-"
         cl_name = p.club.name if p.club else "-"
         sex_badge = f'<span class="badge badge-blue">M</span>' if p.sex == 'M' else f'<span class="badge badge-green">F</span>'
-        html += f"<tr><td>{p.id}</td><td>{p_name(p)}</td><td>{sex_badge}</td><td>{p.birth_year}</td><td>{p.weight}</td><td>{cl_name}</td><td>{c_name}</td><td>{p.pool_number}</td></tr>"
+        
+        # Check birth year validity
+        warning = ""
+        if p.category:
+            min_y = p.category.birth_year_min
+            max_y = p.category.birth_year_max
+            if min_y is not None and max_y is not None:
+                if not (min_y <= p.birth_year <= max_y):
+                    warning = ' <span style="color:red; font-weight:bold" title="Année incohérente">⚠️</span>'
+        
+        html += f"<tr><td>{p.id}</td><td>{p_name(p)}</td><td>{sex_badge}</td><td>{p.birth_year}{warning}</td><td>{p.weight}</td><td>{cl_name}</td><td>{c_name}</td><td>{p.pool_number}</td></tr>"
     html += "</table>"
 
     # 5. Pool Assignments
