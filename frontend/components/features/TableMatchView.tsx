@@ -33,8 +33,8 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     const [fights, setFights] = useState<(Fight & { computedOrder: number })[]>([])
     const [activePool, setActivePool] = useState<string | null>(null) // "cat-poolNum"
     const [selectedFight, setSelectedFight] = useState<Fight | null>(null)
-    const [score1, setScore1] = useState(0)
-    const [score2, setScore2] = useState(0)
+    const [score1, setScore1] = useState("")
+    const [score2, setScore2] = useState("")
     const [manualWinner, setManualWinner] = useState<string>("0")
 
     const loadData = useCallback(async (isBackground = false) => {
@@ -144,29 +144,35 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
     }
 
     const handleFightClick = (f: Fight) => {
-        setScore1(f.score1)
-        setScore2(f.score2)
+        setScore1(f.score1 === 0 ? "" : f.score1.toString())
+        setScore2(f.score2 === 0 ? "" : f.score2.toString())
         setManualWinner(f.winner_id === f.fighter1_id ? "1" : f.winner_id === f.fighter2_id ? "2" : "0")
         setSelectedFight(f)
     }
 
     const getEffectiveWinner = () => {
-        if (score1 > score2) return "1"
-        if (score2 > score1) return "2"
-        if (score1 === score2 && score1 > 0) return manualWinner
+        const s1 = parseInt(score1 || "0")
+        const s2 = parseInt(score2 || "0")
+        if (s1 > s2) return "1"
+        if (s2 > s1) return "2"
+        if (s1 === s2 && s1 > 0) return manualWinner
         return "0"
     }
 
     const effectiveWinner = getEffectiveWinner()
-    const isManualAllowed = score1 === score2 && score1 > 0
+    const s1Val = parseInt(score1 || "0")
+    const s2Val = parseInt(score2 || "0")
+    const isManualAllowed = s1Val === s2Val && s1Val > 0
 
     const handleScoreSave = async (e: React.FormEvent) => {
         e.preventDefault()
         if (!selectedFight) return
         
+        const s1 = parseInt(score1 || "0")
+        const s2 = parseInt(score2 || "0")
+
         // Check if this is a reset (0-0 and no winner selected)
-        // Note: Manual winner is only allowed if score is 1-1, so if score is 0-0, winnerId is null.
-        const isReset = score1 === 0 && score2 === 0
+        const isReset = s1 === 0 && s2 === 0
         
         const winnerId = effectiveWinner === "1" ? selectedFight.fighter1_id : 
                          effectiveWinner === "2" ? selectedFight.fighter2_id : null
@@ -373,35 +379,37 @@ export default function TableMatchView({ tableId }: TableMatchViewProps) {
                                             return p ? `${p.firstname} ${p.lastname}` : "";
                                         })()}
                                     </div>
-                                    <div className="w-full max-w-[140px]">
+                                                                        <div className="w-full max-w-[140px]">
                                                                             <NumberInput 
                                                                                 name="score1" 
                                                                                 value={score1} 
-                                                                                onChange={(val) => setScore1(Number(val))} 
+                                                                                onChange={(val) => setScore1(val)} 
                                                                                 min={0} 
                                                                                 inputClassName="text-center font-mono text-lg"
                                                                                 autoFocus
-                                                                            />                                    </div>
-                                </div>
-
-                                <div className="text-muted-foreground font-bold italic pt-10">VS</div>
-
-                                {/* Fighter 2 */}
-                                <div className="space-y-2 flex flex-col items-center">
-                                    <div className="font-bold truncate text-sm">
-                                        {(() => {
-                                            const p = getParticipant(selectedFight.fighter2_id);
-                                            return p ? `${p.firstname} ${p.lastname}` : "";
-                                        })()}
-                                    </div>
-                                    <div className="w-full max-w-[140px]">
+                                                                            />
+                                                                        </div>
+                                                                    </div>
+                                    
+                                                                    <div className="text-muted-foreground font-bold italic pt-10">VS</div>
+                                    
+                                                                    {/* Fighter 2 */}
+                                                                    <div className="space-y-2 flex flex-col items-center">
+                                                                        <div className="font-bold truncate text-sm">
+                                                                            {(() => {
+                                                                                const p = getParticipant(selectedFight.fighter2_id);
+                                                                                return p ? `${p.firstname} ${p.lastname}` : "";
+                                                                            })()}
+                                                                        </div>
+                                                                        <div className="w-full max-w-[140px]">
                                                                             <NumberInput 
                                                                                 name="score2" 
                                                                                 value={score2} 
-                                                                                onChange={(val) => setScore2(Number(val))} 
+                                                                                onChange={(val) => setScore2(val)} 
                                                                                 min={0} 
                                                                                 inputClassName="text-center font-mono text-lg"
-                                                                            />                                    </div>
+                                                                            />
+                                                                        </div>
                                 </div>
                             </div>
 
